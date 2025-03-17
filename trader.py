@@ -1,3 +1,4 @@
+import copy
 import json
 from abc import ABC, abstractmethod
 from typing import Any, TypeAlias
@@ -152,6 +153,17 @@ class Product(ABC):
         pass
 
 
+class OrderBook:
+    def __init__(self, sell_orders, buy_orders):
+        self.sell_orders = copy.deepcopy(list(sell_orders.items()))
+        self.ask_prices = [order[0] for order in self.sell_orders]
+        self.ask_volumes = [abs(order[1]) for order in self.sell_orders]
+
+        self.buy_orders = copy.deepcopy(list(buy_orders.items()))
+        self.bid_prices = [order[0] for order in self.buy_orders]
+        self.bid_volumes = [abs(order[1]) for order in self.buy_orders]
+
+
 class RainforestResin(Product):
     def __init__(self, trigger_params):
         self.name = "Rainforest Resin"
@@ -165,8 +177,45 @@ class RainforestResin(Product):
     def calculate_orders(self, order_depth, position, timestamp):
         moves = []
 
-        best_ask, best_ask_amount = list(order_depth.sell_orders.items())[0]
-        best_bid, best_bid_amount = list(order_depth.buy_orders.items())[0]
+        order_book = OrderBook(order_depth.sell_orders, order_depth.buy_orders)
+        updated_order_book = OrderBook(order_depth.sell_orders, order_depth.buy_orders)
+
+        # for i, price in enumerate(order_book.ask_prices):
+        #     if price <= self._RESIN_MEAN:
+        #         bid_price = price
+        #         bid_volume = order_book.ask_volumes[i]
+        #         bid_order = Order(self.symbol, bid_price, bid_volume)
+        #         moves.append(bid_order)
+
+        #         updated_order_book.ask_prices.pop(i)
+        #         updated_order_book.ask_volumes.pop(i)
+
+        #         position += bid_volume
+
+        # for i, price in enumerate(order_book.bid_prices):
+        #     if price >= self._RESIN_MEAN:
+        #         ask_price = price
+        #         ask_volume = order_book.bid_volumes[i]
+        #         ask_order = Order(self.symbol, ask_price, -ask_volume)
+        #         moves.append(ask_order)
+
+        #         updated_order_book.bid_prices.pop(i)
+        #         updated_order_book.bid_volumes.pop(i)
+
+        #         position -= ask_volume
+
+        # mm_ask_price = updated_order_book.ask_prices[0] - 1
+        # mm_ask_volume = 5
+        # mm_sell_order = Order(self.symbol, mm_ask_price, -mm_ask_volume)
+        # moves.append(mm_sell_order)
+
+        # mm_bid_price = updated_order_book.bid_prices[0] + 1
+        # mm_bid_volume = 5
+        # mm_buy_order = Order(self.symbol, mm_bid_price, mm_bid_volume)
+        # moves.append(mm_buy_order)
+
+        best_ask = order_book.ask_prices[0]
+        best_bid = order_book.bid_prices[0]
 
         price = (best_ask + best_bid) / 2
         if price >= int(self._RESIN_MEAN + self._x * self._RESIN_STD):
@@ -195,7 +244,7 @@ class RainforestResin(Product):
         return moves
 
 
-products = {"RAINFOREST_RESIN": RainforestResin((2, 1))}
+products = {"RAINFOREST_RESIN": RainforestResin((2.0, 1.0))}
 
 
 class Trader:
