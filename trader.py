@@ -2,7 +2,6 @@ from datamodel import TradingState
 from products import RainforestResin
 from utils import Logger
 
-
 products = {"RAINFOREST_RESIN": RainforestResin()}
 
 

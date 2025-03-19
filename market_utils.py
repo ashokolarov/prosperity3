@@ -54,14 +54,14 @@ class OrderBook:
 
     @property
     def vwap(self):
-        buy_vwap = sum(
+        bid_vwap = sum(
             [price * volume for price, volume in zip(self.bid_prices, self.bid_volumes)]
         ) / sum(self.bid_volumes)
-        sell_vwap = sum(
+        ask_vwap = sum(
             [price * volume for price, volume in zip(self.ask_prices, self.ask_volumes)]
         ) / sum(self.ask_volumes)
-        mid_vwap = (buy_vwap + sell_vwap) / 2
-        return buy_vwap, sell_vwap, mid_vwap
+        mid_vwap = (bid_vwap + ask_vwap) / 2
+        return bid_vwap, ask_vwap, mid_vwap
 
     def __repr__(self):
         repr_str = "BID ORDER PRICE | VOLUME | ASK ORDER PRICE\n"
@@ -165,8 +165,19 @@ class PositionBook:
         return self.pos_limit + self.tot_position
 
     def add_pos(self, order, timestamp):
-        self.tot_position += order.quantity
-        self.positions.append([order.price, order.quantity, timestamp])
+        price = order.price
+        qty = order.quantity
+
+        added = False
+        for i in range(len(self.positions)):
+            if self.positions[i][0] == price:
+                self.positions[i][1] += qty
+                self.positions[i][2] = timestamp
+                added = True
+                break
+        if not added:
+            self.tot_position += order.quantity
+            self.positions.append([order.price, order.quantity, timestamp])
 
     def _update_tot_position(self):
         self.tot_position = sum([pos[1] for pos in self.positions])
@@ -174,7 +185,7 @@ class PositionBook:
     def liquidate_pos(self, qty, timestamp):
         for pos in self.positions:
             if pos[2] == timestamp:
-                pos[1] = abs(pos[1]) - qty
+                pos[1] = pos[1] + qty if pos[1] < 0 else pos[1] - qty
                 if pos[1] == 0:
                     self.positions.remove(pos)
         self._update_tot_position()
