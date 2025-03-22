@@ -1,8 +1,6 @@
 from datamodel import TradingState
-from products import RainforestResin
+from defined_products import defined_products
 from utils import Logger
-
-products = {"RAINFOREST_RESIN": RainforestResin()}
 
 
 class Trader:
@@ -16,14 +14,20 @@ class Trader:
 
         result = {}
         for product in state.order_depths:
-            if product in products.keys():
+            if product in defined_products.keys():
                 order_depth = state.order_depths[product]
                 if product in state.position:
                     position = state.position[product]
                 else:
                     position = 0
-                orders = products[product].calculate_orders(
-                    order_depth, position, state.timestamp
+
+                if product in state.own_trades:
+                    own_trades = state.own_trades[product]
+
+                else:
+                    own_trades = []
+                orders = defined_products[product].calculate_orders(
+                    order_depth, position, own_trades, state.timestamp
                 )
             else:
                 orders = []
