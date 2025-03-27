@@ -5,11 +5,6 @@ class OrderBook:
         self.bid_prices = []
         self.bid_volumes = []
 
-        self._prev_ask_prices = []
-        self._prev_ask_volumes = []
-        self._prev_bid_prices = []
-        self._prev_bid_volumes = []
-
     def reset(self, order_depths):
         sell_orders = order_depths.sell_orders
         buy_orders = order_depths.buy_orders
@@ -20,12 +15,14 @@ class OrderBook:
 
         buy_orders = list(buy_orders.items())
         self.bid_prices = [order[0] for order in buy_orders]
-        self.bid_volumes = [abs(order[1]) for order in buy_orders]
+        self.bid_volumes = [order[1] for order in buy_orders]
 
     def get_ask_order_at_depth(self, depth):
+        assert depth < self.ask_orders_depth and depth >= 0
         return self.ask_prices[depth], self.ask_volumes[depth]
 
     def get_bid_order_at_depth(self, depth):
+        assert depth < self.bid_orders_depth and depth >= 0
         return self.bid_prices[depth], self.bid_volumes[depth]
 
     @property
@@ -50,7 +47,7 @@ class OrderBook:
 
     @property
     def mid_price(self):
-        return int((self.ask_prices[0] + self.bid_prices[0]) / 2)
+        return (self.ask_prices[0] + self.bid_prices[0]) / 2
 
     @property
     def vwap(self):
@@ -60,8 +57,20 @@ class OrderBook:
         ask_vwap = sum(
             [price * volume for price, volume in zip(self.ask_prices, self.ask_volumes)]
         ) / sum(self.ask_volumes)
-        mid_vwap = (bid_vwap + ask_vwap) / 2
-        return int(bid_vwap), int(ask_vwap), int(mid_vwap)
+
+        vwap = sum(
+            [price * volume for price, volume in zip(self.ask_prices, self.ask_volumes)]
+        ) + sum(
+            [price * volume for price, volume in zip(self.bid_prices, self.bid_volumes)]
+        ) / (
+            sum(self.ask_volumes) + sum(self.bid_volumes)
+        )
+
+        return (
+            vwap,
+            bid_vwap,
+            ask_vwap,
+        )
 
     def calculate_order_book_imbalance(self):
         """Calculate the order book imbalance ratio."""
@@ -75,25 +84,6 @@ class OrderBook:
             return 0.0  # Extreme selling pressure
 
         return total_bid_volume / total_ask_volume
-
-    def calculate_weighted_imbalance(self):
-        weighted_bid_volume = 0
-        weighted_ask_volume = 0
-
-        for i in range(len(self.bid_prices)):
-            weight = 1.0 / (i + 1)  # Higher weight for closer levels
-            weighted_bid_volume += self.bid_volumes[i] * weight
-
-        for i in range(len(self.ask_prices)):
-            weight = 1.0 / (i + 1)  # Higher weight for closer levels
-            weighted_ask_volume += self.ask_volumes[i] * weight
-
-        if weighted_ask_volume == 0:
-            return float("inf")
-        elif weighted_bid_volume == 0:
-            return 0.0
-
-        return weighted_bid_volume / weighted_ask_volume
 
     def __repr__(self):
         repr_str = "BID ORDER PRICE | VOLUME | ASK ORDER PRICE\n"
@@ -133,12 +123,10 @@ class OrderBook:
         mid_price = self.mid_price
         vwap = self.vwap
         imbalance = self.calculate_order_book_imbalance()
-        weighted_imbalance = self.calculate_weighted_imbalance()
         lines.append(f"Spread: {spread}\n")
         lines.append(f"Mid Price: {mid_price}\n")
         lines.append(f"VWAP_BID: {vwap[0]}, VWAP_ASK: {vwap[1]}, VWAP_MID: {vwap[2]}\n")
         lines.append(f"Order Book Imbalance: {imbalance:.2f}\n")
-        lines.append(f"Weighted Order Book Imbalance: {weighted_imbalance:.2f}\n")
 
         return "".join(lines)
 

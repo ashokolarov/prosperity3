@@ -1,4 +1,5 @@
 import os
+import argparse
 
 
 def combine_python_files(directory_path, output_file="combined_output.py"):
@@ -90,8 +91,35 @@ def combine_python_files(directory_path, output_file="combined_output.py"):
 
 
 if __name__ == "__main__":
-    # Get directory path from user input
-    directory = "src/"
-    output = "submission.py"
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description="Combine Python files from a directory into a single file."
+    )
+    parser.add_argument(
+        "-d",
+        "--directory",
+        default="src/",
+        help="Directory containing Python files to combine (default: src/)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="../submissions/submission.py",
+        help="Output file path (default: ../submissions/submission.py)",
+    )
 
-    combine_python_files(directory, output)
+    # Parse arguments
+    args = parser.parse_args()
+
+    # Interactive prompt for the output file name
+    output_path = (
+        input(f"Enter output file name (default: {args.output}): ").strip()
+        or args.output
+    )
+
+    output_path = "../submissions/" + output_path
+    if output_path[-3:] != ".py":
+        output_path += ".py"
+
+    # Run the combination function
+    combine_python_files(args.directory, output_path)

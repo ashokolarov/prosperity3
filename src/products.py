@@ -1,7 +1,8 @@
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 
 from datamodel import Order
 from market_utils import OrderBook, PositionBook
+from utils import CustomLogger
 
 
 class Product(ABC):
@@ -9,27 +10,30 @@ class Product(ABC):
     symbol: str = None
     pos_limit: int = None
 
-    @abstractmethod
     def __init__(self, config):
-        pass
+        self.logger = CustomLogger()
+
+    def print_product_begin(self, timestamp):
+        self.logger.print(f"PRODUCT_BEGIN {self.symbol}")
+        self.logger.print(f"timestamp {timestamp}")
+
+    def print_product_end(self):
+        self.logger.print(f"PRODUCT_END {self.symbol}")
+        self.logger.flush()
+
+    def print_orders(self, orders):
+        for order in orders:
+            self.logger.print(f"order {order.quantity}@{order.price}")
 
     @abstractmethod
     def calculate_orders(self, order_depths, position, own_trades, timestamp):
         pass
 
-    def print_product_begin(self):
-        print(f"product {self.symbol}")
-
-    def print_product_end(self):
-        print("-END-")
-
-    def print_orders(self, orders):
-        for order in orders:
-            print(f"order {order.quantity} {order.price}")
-
 
 class RainforestResin(Product):
     def __init__(self, config):
+        super().__init__(config)
+
         # Rainforest Resin parameters
         self.name = "Rainforest Resin"
         self.symbol = "RAINFOREST_RESIN"
@@ -281,7 +285,7 @@ class RainforestResin(Product):
         return positive_delta, negative_delta
 
     def calculate_orders(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin()
+        self.print_product_begin(timestamp)
 
         self.order_book.reset(order_depths)
 
@@ -290,9 +294,9 @@ class RainforestResin(Product):
         mt_position = self.mt_positions.tot_position
         mm_position = position - mt_position
 
-        print(f"position {position}")
-        print(f"mt_position {mt_position}")
-        print(f"mm_position {mm_position}")
+        self.logger.print(f"position {position}")
+        self.logger.print(f"mt_position {mt_position}")
+        self.logger.print(f"mm_position {mm_position}")
 
         liquidated_orders, delta_pos_l = self.liquidate_mt_orders()
         orders += liquidated_orders
@@ -319,6 +323,6 @@ class RainforestResin(Product):
 
         self.print_orders(orders)
 
-        # self.print_product_end()
+        self.print_product_end()
 
         return orders

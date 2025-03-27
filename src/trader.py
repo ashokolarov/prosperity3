@@ -4,7 +4,7 @@ import jsonpickle
 
 from datamodel import TradingState
 from products import RainforestResin
-from utils import Logger
+from utils import CustomLogger
 
 config_rainforest = {
     # Market taking parameters
@@ -21,13 +21,14 @@ config_rainforest = {
 
 class Trader:
     def __init__(self):
-        self.logger = Logger()
+        self.logger = CustomLogger()
 
     def run(self, state: TradingState):
         t1 = time()
 
-        # Only method required. It takes all buy and sell orders for all symbols as an input, and outputs a list of orders to be sent
-        print(f"timestamp {state.timestamp}")
+        self.logger.print("TRADER_BEGIN")
+        self.logger.print(f"timestamp {state.timestamp}")
+
         result = {}
         if not state.traderData:
             products = {}
@@ -64,6 +65,8 @@ class Trader:
 
         t2 = time()
 
-        print(f"runtime {t2 - t1}")
+        self.logger.print(f"runtime {t2 - t1}")
+        self.logger.print("TRADER_END")
+        self.logger.flush()
 
         return result, conversions, traderData
