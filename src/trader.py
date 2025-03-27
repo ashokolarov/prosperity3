@@ -1,20 +1,43 @@
+from time import time
+
+import jsonpickle
+
 from datamodel import TradingState
-from defined_products import defined_products
+from products import RainforestResin
 from utils import Logger
+
+config_rainforest = {
+    # Market taking parameters
+    "mt_pos_limit": 30,
+    "mt_hl_target": 5,
+    "mt_bid_edge": 0,
+    "mt_ask_edge": 0,
+    "mt_short_pm": 2,
+    "mt_long_pm": 2,
+    # Market making parameters
+    "mm_default_vol": 15,
+}
 
 
 class Trader:
     def __init__(self):
-        self.iter = 0
         self.logger = Logger()
 
     def run(self, state: TradingState):
-        # Only method required. It takes all buy and sell orders for all symbols as an input, and outputs a list of orders to be sent
-        self.logger.print(state)
+        t1 = time()
 
+        # Only method required. It takes all buy and sell orders for all symbols as an input, and outputs a list of orders to be sent
+        print(f"timestamp {state.timestamp}")
         result = {}
+        if not state.traderData:
+            products = {}
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+        else:
+            traderData = jsonpickle.decode(state.traderData)
+            products = traderData["products"]
+
         for product in state.order_depths:
-            if product in defined_products.keys():
+            if product in products.keys():
                 order_depth = state.order_depths[product]
                 if product in state.position:
                     position = state.position[product]
@@ -26,17 +49,21 @@ class Trader:
 
                 else:
                     own_trades = []
-                orders = defined_products[product].calculate_orders(
+                orders = products[product].calculate_orders(
                     order_depth, position, own_trades, state.timestamp
                 )
             else:
                 orders = []
             result[product] = orders
 
-        traderData = "SAMPLE"  # String value holding Trader state data required. It will be delivered as TradingState.traderData on next execution.
+        traderData = dict()
+        traderData["products"] = products
+        traderData = jsonpickle.encode(traderData)
 
         conversions = 1
-        self.iter += 1
-        self.logger.flush(state, result, conversions, traderData)
+
+        t2 = time()
+
+        print(f"runtime {t2 - t1}")
 
         return result, conversions, traderData

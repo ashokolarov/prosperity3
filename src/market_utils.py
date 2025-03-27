@@ -201,8 +201,7 @@ class OrderBook:
 
 
 class PositionBook:
-    def __init__(self, pos_limit):
-        self.pos_limit = pos_limit
+    def __init__(self):
         self.long_pos = 0
         self.long_price = 0
         self.short_pos = 0
@@ -273,15 +272,3 @@ class PositionBook:
         lines.append(f"NET POSITION: {self.tot_position}\n")
 
         return "".join(lines)
-
-
-class MMPositionBook:
-    def __init__(self):
-        self.position = 0
-        self.avg_price = 0
-
-    def update(self, order):
-        self.position += order.quantity
-
-    def __repr__(self):
-        return f"POSITION: {self.position} \n"
