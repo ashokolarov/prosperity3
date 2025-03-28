@@ -1,7 +1,7 @@
 from dash import dash_table, dcc, html
 
 
-def get_layout(products, timestamps):
+def get_layout(products, timestamps, log_name):
     layout = html.Div(
         [
             html.Div(
@@ -9,25 +9,22 @@ def get_layout(products, timestamps):
                     # Dropdown on the left
                     html.Div(
                         [
-                            html.Label("Select Product:", style={"marginRight": "5px"}),
                             dcc.Dropdown(
                                 id="product-dropdown",
                                 options=[{"label": p, "value": p} for p in products],
-                                value=products[1],
+                                value=products[0],
                                 clearable=False,
                                 style={
-                                    "width": "200px",
+                                    "marginTop": "5px",
+                                    "marginLeft": "30px",
+                                    "width": "250px",
                                 },
                             ),
                         ],
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                        },
                     ),
                     # Title on the left with flex to take up more space
                     html.H1(
-                        "Restarted Quants Visualization",
+                        f"Restarted Quants Dashboard - {log_name}",
                         style={"textAlign": "center", "margin": "0", "flex": "1"},
                     ),
                     html.Div(
@@ -36,141 +33,105 @@ def get_layout(products, timestamps):
                 ],
                 style={
                     "display": "flex",
-                    "alignItems": "center",
-                    "justifyContent": "space-between",
+                    "marginTop": "20px",
                     "marginBottom": "20px",
-                    "marginTop": "10px",
-                    "paddingLeft": "20px",
-                    "paddingRight": "20px",
                 },
             ),
             html.Div(
                 [
-                    dcc.Graph(id="position-chart", style={"flex": "1"}),
+                    dcc.Graph(id="position-chart", style={"flex": "1.2"}),
                     dcc.Graph(id="pnl-chart", style={"flex": "1"}),
                 ],
-                style={"display": "flex"},
+                style={"display": "flex", "gap": "10px", "marginRight": "20px"},
             ),
             dcc.Graph(
                 id="mid-price-chart",
                 style={
                     "flex": "1",
+                    "marginRight": "20px",
                 },
             ),
             html.Div(
                 [
                     # The main slider container
+                    # Flex container for slider and input
+                    # Slider takes most of the space
+                    html.Div(
+                        dcc.Slider(
+                            id="timestamp-slider",
+                            min=min(timestamps),
+                            max=max(timestamps),
+                            value=min(timestamps),
+                            marks={
+                                ts: {
+                                    "label": str(ts),
+                                    "style": {
+                                        "transform": "rotate(45deg)",
+                                        "margin-top": "12px",
+                                        "fontSize": "16px",
+                                    },
+                                }
+                                for ts in range(
+                                    min(timestamps),
+                                    max(timestamps) + 1,
+                                    (max(timestamps) - min(timestamps)) // 10,
+                                )
+                            },
+                            step=100,
+                            tooltip={
+                                "placement": "bottom",
+                                "always_visible": True,
+                                "style": {
+                                    "fontSize": "16px",
+                                    "fontWeight": "bold",
+                                    "padding": "8px",
+                                },
+                            },
+                        ),
+                        style={
+                            "flex": "1",
+                            "marginRight": "40px",
+                            "marginLeft": "20px",
+                            "marginBottom": "20px",
+                        },
+                    ),
+                    # Input and button in a vertical arrangement
                     html.Div(
                         [
-                            html.Label(
-                                "Select Timestamp:",
+                            dcc.Input(
+                                id="timestamp-input",
+                                type="number",
+                                placeholder="Enter timestamp...",
+                                min=min(timestamps),
+                                max=max(timestamps),
+                                step=100,  # Set step to 100
                                 style={
-                                    "marginBottom": "5px",
-                                    "display": "block",
-                                    "marginLeft": "20px",
+                                    "marginRight": "10px",
+                                    "padding": "8px",
+                                    "width": "125px",
                                 },
                             ),
-                            # Flex container for slider and input
-                            html.Div(
-                                [
-                                    # Slider takes most of the space
-                                    html.Div(
-                                        dcc.Slider(
-                                            id="timestamp-slider",
-                                            min=min(timestamps),
-                                            max=max(timestamps),
-                                            value=min(timestamps),
-                                            marks={
-                                                ts: {
-                                                    "label": str(ts),
-                                                    "style": {
-                                                        "transform": "rotate(45deg)",
-                                                        "white-space": "nowrap",
-                                                        "margin-top": "10px",
-                                                    },
-                                                }
-                                                for ts in range(
-                                                    min(timestamps),
-                                                    max(timestamps) + 1,
-                                                    (max(timestamps) - min(timestamps))
-                                                    // 10,
-                                                )
-                                            },
-                                            step=100,
-                                            tooltip={
-                                                "placement": "bottom",
-                                                "always_visible": True,
-                                                "style": {
-                                                    "fontSize": "16px",
-                                                    "fontWeight": "bold",
-                                                    "padding": "8px",
-                                                },
-                                            },
-                                        ),
-                                        style={"flex": "1", "marginRight": "20px"},
-                                    ),
-                                    # Input and button in a vertical arrangement
-                                    html.Div(
-                                        [
-                                            html.Label(
-                                                "Exact Timestamp:",
-                                                style={
-                                                    "marginBottom": "5px",
-                                                    "display": "block",
-                                                },
-                                            ),
-                                            html.Div(
-                                                [
-                                                    dcc.Input(
-                                                        id="timestamp-input",
-                                                        type="number",
-                                                        placeholder="Enter timestamp...",
-                                                        min=min(timestamps),
-                                                        max=max(timestamps),
-                                                        step=100,  # Set step to 100
-                                                        style={
-                                                            "marginRight": "10px",
-                                                            "padding": "8px",
-                                                            "width": "150px",
-                                                        },
-                                                    ),
-                                                    html.Button(
-                                                        "Go",
-                                                        id="timestamp-button",
-                                                        style={
-                                                            "padding": "8px 15px",
-                                                            "backgroundColor": "#4CAF50",
-                                                            "color": "white",
-                                                            "border": "none",
-                                                            "borderRadius": "4px",
-                                                            "cursor": "pointer",
-                                                        },
-                                                    ),
-                                                ],
-                                                style={
-                                                    "display": "flex",
-                                                    "alignItems": "center",
-                                                },
-                                            ),
-                                        ],
-                                        style={"width": "220px"},
-                                    ),
-                                ],
+                            html.Button(
+                                "Go",
+                                id="timestamp-button",
                                 style={
-                                    "display": "flex",
-                                    "alignItems": "flex-end",
-                                    "justifyContent": "space-between",
-                                    "marginBottom": "30px",
+                                    "padding": "8px 15px",
+                                    "backgroundColor": "#4CAF50",
+                                    "color": "white",
+                                    "border": "none",
+                                    "borderRadius": "6px",
+                                    "cursor": "pointer",
                                 },
                             ),
                         ],
                     ),
                 ],
                 style={
-                    "width": "98%",
+                    "display": "flex",
+                    "justifyContent": "space-between",
                     "marginBottom": "30px",
-                    "paddingRight": "20px",
-                    "paddingLeft": "20px",
+                    "marginRight": "30px",
+                    "marginTop": "25px",
                 },
             ),
             html.Div(
@@ -236,7 +197,6 @@ def get_layout(products, timestamps):
                                             "name": "Price",
                                             "id": "Price",
                                             "type": "numeric",
-                                            "format": {"specifier": ",.0f"},
                                         },
                                         {
                                             "name": "Quantity",
@@ -276,7 +236,7 @@ def get_layout(products, timestamps):
                     # Trades Table
                     html.Div(
                         [
-                            html.H3("Recent Trades", style={"textAlign": "center"}),
+                            html.H3("Trades", style={"textAlign": "center"}),
                             html.Div(
                                 dash_table.DataTable(
                                     id="trades-table",

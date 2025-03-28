@@ -1,5 +1,5 @@
-import os
 import argparse
+import os
 
 
 def combine_python_files(directory_path, output_file="combined_output.py"):
@@ -12,7 +12,12 @@ def combine_python_files(directory_path, output_file="combined_output.py"):
         output_file (str): Name of the output file (default: combined_output.py)
     """
     # Get all Python files in the directory
-    python_files = [f for f in os.listdir(directory_path) if f.endswith(".py")]
+    exclude_file = "datamodel.py"
+    python_files = [
+        f
+        for f in os.listdir(directory_path)
+        if f.endswith(".py") and exclude_file not in f
+    ]
 
     if not python_files:
         print(f"No Python files found in {directory_path}")
@@ -25,6 +30,15 @@ def combine_python_files(directory_path, output_file="combined_output.py"):
 
     # Store the content from each file (excluding imports)
     file_contents = []
+
+    allowed_local_imports = ["datamodel"]
+    remove_local_imports = []
+    for file_name in python_files:
+        file_name = os.path.basename(file_name)
+        import_name = file_name.split(".")[0]
+
+        if import_name not in allowed_local_imports:
+            remove_local_imports.append(import_name)
 
     # Process each file
     for file_name in sorted(python_files):
@@ -72,6 +86,15 @@ def combine_python_files(directory_path, output_file="combined_output.py"):
         formatted_content = f"\n\n# Code from {file_name}\n{content_without_imports}"
         file_contents.append(formatted_content)
 
+    allowed_import_statements = []
+    for import_statement in import_statements:
+        allowed = True
+        for remove_local_import in remove_local_imports:
+            if remove_local_import in import_statement:
+                allowed = False
+        if allowed:
+            allowed_import_statements.append(import_statement)
+
     # Write everything to the output file
     with open(os.path.join(directory_path, output_file), "w") as out_file:
         # Write a header comment
@@ -80,7 +103,7 @@ def combine_python_files(directory_path, output_file="combined_output.py"):
 
         # Write all import statements sorted alphabetically
         out_file.write("# Import statements\n")
-        for imp in sorted(import_statements):
+        for imp in sorted(allowed_import_statements):
             out_file.write(f"{imp}\n\n")
 
         # Write all file contents

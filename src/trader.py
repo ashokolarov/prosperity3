@@ -3,20 +3,20 @@ from time import time
 import jsonpickle
 
 from datamodel import TradingState
-from products import RainforestResin
+from products import Kelp, RainforestResin
 from utils import CustomLogger
 
 config_rainforest = {
     # Market taking parameters
-    "mt_pos_limit": 30,
-    "mt_hl_target": 5,
     "mt_bid_edge": 0,
     "mt_ask_edge": 0,
-    "mt_short_pm": 2,
-    "mt_long_pm": 2,
+    "mt_short_pm": 1,
+    "mt_long_pm": 1,
     # Market making parameters
     "mm_default_vol": 15,
 }
+
+config_kelp = {}
 
 
 class Trader:
@@ -26,13 +26,15 @@ class Trader:
     def run(self, state: TradingState):
         t1 = time()
 
-        self.logger.print("TRADER_BEGIN")
-        self.logger.print(f"timestamp {state.timestamp}")
+        self.logger.print("TRADER_B")
+        timestamp = state.timestamp
+        self.logger.print(f"timestamp {timestamp}")
 
         result = {}
         if not state.traderData:
             products = {}
             products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["KELP"] = Kelp(config_kelp)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
@@ -47,14 +49,15 @@ class Trader:
 
                 if product in state.own_trades:
                     own_trades = state.own_trades[product]
-
                 else:
                     own_trades = []
+
                 orders = products[product].calculate_orders(
-                    order_depth, position, own_trades, state.timestamp
+                    order_depth, position, own_trades, timestamp
                 )
             else:
                 orders = []
+
             result[product] = orders
 
         traderData = dict()
@@ -66,7 +69,7 @@ class Trader:
         t2 = time()
 
         self.logger.print(f"runtime {t2 - t1}")
-        self.logger.print("TRADER_END")
+        self.logger.print("TRADER_E")
         self.logger.flush()
 
         return result, conversions, traderData

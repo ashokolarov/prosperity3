@@ -14,11 +14,11 @@ class Product(ABC):
         self.logger = CustomLogger()
 
     def print_product_begin(self, timestamp):
-        self.logger.print(f"PRODUCT_BEGIN {self.symbol}")
+        self.logger.print(f"PRODUCT_B {self.symbol}")
         self.logger.print(f"timestamp {timestamp}")
 
     def print_product_end(self):
-        self.logger.print(f"PRODUCT_END {self.symbol}")
+        self.logger.print(f"PRODUCT_E {self.symbol}")
         self.logger.flush()
 
     def print_orders(self, orders):
@@ -45,8 +45,6 @@ class RainforestResin(Product):
 
         # Market taking parameters
         self.mt_positions = PositionBook()
-        self.mt_pos_limit = config.get("mt_pos_limit")
-        self.mt_hl_target = config.get("mt_hl_target")
         self.mt_bid_edge = config.get("mt_bid_edge")
         self.mt_ask_edge = config.get("mt_ask_edge")
         self.mt_short_profit_margin = config.get("mt_short_pm")
@@ -55,15 +53,16 @@ class RainforestResin(Product):
         # Market making parameters
         self.mm_default_vol = config.get("mm_default_vol")
 
-    def market_take(self):
+    def market_take(self, remaining_buy, remaining_sell):
         # Check if there is an opportunity to market take in ask orders
         position_delta = 0
         mt_bid_orders = []
         for depth_level in range(self.order_book.ask_orders_depth):
             ask_price, ask_volume = self.order_book.get_ask_order_at_depth(depth_level)
+            order_volume = min(remaining_buy, ask_volume)
             if ask_price <= self.mean - self.mt_ask_edge:
                 bid_price = ask_price
-                bid_volume = ask_volume
+                bid_volume = order_volume
                 bid_order = Order(self.symbol, bid_price, bid_volume)
                 mt_bid_orders.append(bid_order)
                 position_delta += bid_volume
@@ -78,9 +77,10 @@ class RainforestResin(Product):
         mt_ask_orders = []
         for depth_level in range(self.order_book.bid_orders_depth):
             bid_price, bid_volume = self.order_book.get_bid_order_at_depth(depth_level)
+            order_volume = min(remaining_sell, bid_volume)
             if bid_price >= self.mean + self.mt_bid_edge:
                 ask_price = bid_price
-                ask_volume = bid_volume
+                ask_volume = order_volume
                 ask_order = Order(self.symbol, ask_price, -ask_volume)
                 mt_ask_orders.append(ask_order)
                 position_delta -= ask_volume
@@ -91,10 +91,12 @@ class RainforestResin(Product):
             self.order_book.update(ask_order)
             self.mt_positions.add_pos(ask_order)
 
-        return mt_ask_orders + mt_bid_orders, position_delta
+        return mt_ask_orders + mt_bid_orders
 
-    def liquidate_mt_orders(self):
+    def liquidate_mt_orders(self, mt_position):
         position_delta = 0
+
+        long_profit_margin = self.mt_long_profit_margin
 
         close_long = []
         for depth_level in range(self.order_book.bid_orders_depth):
@@ -103,7 +105,7 @@ class RainforestResin(Product):
                 bid_price, bid_volume = self.order_book.get_bid_order_at_depth(
                     depth_level
                 )
-                if bid_price - long_price >= self.mt_long_profit_margin:
+                if bid_price - long_price >= long_profit_margin:
                     qty = min(long_pos, bid_volume)
                     ask_order = Order(self.symbol, bid_price, -qty)
                     close_long.append(ask_order)
@@ -117,6 +119,8 @@ class RainforestResin(Product):
         for ask_order in close_long:
             self.order_book.update(ask_order)
 
+        short_profit_margin = self.mt_short_profit_margin
+
         close_short = []
         for depth_level in range(self.order_book.ask_orders_depth):
             if self.mt_positions.short_pos > 0:
@@ -124,7 +128,7 @@ class RainforestResin(Product):
                 ask_price, ask_volume = self.order_book.get_ask_order_at_depth(
                     depth_level
                 )
-                if short_price - ask_price >= self.mt_short_profit_margin:
+                if short_price - ask_price >= short_profit_margin:
                     qty = min(short_pos, ask_volume)
                     bid_order = Order(self.symbol, ask_price, qty)
                     close_short.append(bid_order)
@@ -138,18 +142,14 @@ class RainforestResin(Product):
         for bid_order in close_short:
             self.order_book.update(bid_order)
 
-        return close_long + close_short, position_delta
+        return close_long + close_short
 
-    def hard_liquidate(self):
+    def hard_liquidate(self, target_volume, type):
+        orders = []
         position_delta = 0
 
-        liquidate_long = []
-
-        # For long positions over the threshold
-        if self.mt_positions.long_pos > 0:
-            target_long = self.mt_hl_target
-            sold_long = 0
-
+        if target_volume > 0:
+            sold_volume = 0
             # Find the best available price to liquidate
             for depth_level in range(self.order_book.bid_orders_depth):
                 bid_price, bid_volume = self.order_book.get_bid_order_at_depth(
@@ -159,31 +159,28 @@ class RainforestResin(Product):
                 # Calculate how many shares to liquidate
                 target_reduction = max(
                     0,
-                    target_long - sold_long,
+                    target_volume - sold_volume,
                 )
 
                 qty = min(bid_volume, target_reduction)
 
                 if qty > 0:
                     ask_order = Order(self.symbol, bid_price, -qty)
-                    liquidate_long.append(ask_order)
-                    self.mt_positions.liquidate_pos(-qty)
+                    orders.append(ask_order)
+                    if type == "mt":
+                        self.mt_positions.liquidate_pos(-qty)
                     position_delta -= qty
-
-                    sold_long += qty
+                    sold_volume += qty
 
                     # If we've reduced enough, stop
-                    if sold_long >= target_long:
+                    if sold_volume >= target_volume:
                         break
 
-        for sell_order in liquidate_long:
+        for sell_order in orders:
             self.order_book.update(sell_order)
 
-        liquidate_short = []
-        # For short positions over the threshold
-        if self.mt_positions.short_pos > 0:
-            target_short = self.mt_hl_target
-            sold_short = 0
+        if target_volume < 0:
+            bought_volume = 0
             # Find the best available price to liquidate
             for depth_level in range(self.order_book.ask_orders_depth):
                 ask_price, ask_volume = self.order_book.get_ask_order_at_depth(
@@ -193,27 +190,27 @@ class RainforestResin(Product):
                 # Calculate how many shares to liquidate
                 target_reduction = max(
                     0,
-                    target_short - sold_short,
+                    abs(target_volume) - bought_volume,
                 )
                 qty = min(ask_volume, target_reduction)
 
                 if qty > 0:
                     bid_order = Order(self.symbol, ask_price, qty)
-                    liquidate_short.append(bid_order)
-                    self.mt_positions.liquidate_pos(qty)
+                    orders.append(bid_order)
+                    if type == "mt":
+                        self.mt_positions.liquidate_pos(qty)
                     position_delta += qty
-
-                    sold_short += qty
+                    bought_volume += qty
 
                     # If we've reduced enough, stop
-                    if sold_short >= target_short:
+                    if bought_volume >= abs(target_volume):
                         break
 
         # Update order book
-        for order in liquidate_short:
+        for order in orders:
             self.order_book.update(order)
 
-        return liquidate_long + liquidate_short, position_delta
+        return orders, position_delta
 
     def market_make(self, positions):
         orders = []
@@ -233,21 +230,13 @@ class RainforestResin(Product):
             price_skew = 1
         # If we have strong selling pressure, shift our quotes lower
         elif imbalance < 0.5:
-            spread_adjustment = 1
+            spread_adjustment = 0
             price_skew = -1
-
-        # Further adjust based on our current position
-        if positions["mm_pos"] > 22:  # We're long, so prefer to sell
-            price_skew -= 1
-            spread_adjustment -= 1
-        elif positions["mm_pos"] < -22:  # We're short, so prefer to buy
-            price_skew += 1
-            spread_adjustment -= 1
 
         # Calculate our bid and ask prices
         half_spread = (spread + spread_adjustment) // 2
-        bid_price = int(mid_price) - half_spread + price_skew
-        ask_price = int(mid_price) + half_spread + price_skew
+        bid_price = int(mid_price) - half_spread + 1 + price_skew
+        ask_price = int(mid_price) + half_spread - 1 + price_skew
 
         # Make sure our prices are sensible relative to the mean value
         if bid_price > self.mean:
@@ -255,15 +244,9 @@ class RainforestResin(Product):
         if ask_price < self.mean:
             ask_price = int(self.mean)
 
-        # Calculate appropriate volumes based on position limits
-        remaining_long_capacity = self.pos_limit - positions["max_long"]
-
-        remaining_short_capacity = self.pos_limit + positions["max_short"]
-        # Note: current_position could be negative
-
         # Scale our order sizes based on how far we are from position limits
-        bid_volume = min(self.mm_default_vol, remaining_long_capacity)
-        ask_volume = min(self.mm_default_vol, remaining_short_capacity)
+        bid_volume = min(self.mm_default_vol, positions["remaining_buy"])
+        ask_volume = min(self.mm_default_vol, positions["remaining_sell"])
 
         # Create the orders if they make sense
         if bid_price > 0 and bid_volume > 0:
@@ -286,7 +269,6 @@ class RainforestResin(Product):
 
     def calculate_orders(self, order_depths, position, own_trades, timestamp):
         self.print_product_begin(timestamp)
-
         self.order_book.reset(order_depths)
 
         orders = []
@@ -298,23 +280,23 @@ class RainforestResin(Product):
         self.logger.print(f"mt_position {mt_position}")
         self.logger.print(f"mm_position {mm_position}")
 
-        liquidated_orders, delta_pos_l = self.liquidate_mt_orders()
+        liquidated_orders = self.liquidate_mt_orders(mt_position)
         orders += liquidated_orders
+        buy_vol_l, sell_vol_l = self.calculate_delta_by_direction(orders)
 
-        mt_orders, delta_pos_mt = self.market_take()
+        remaining_buy = self.pos_limit - (position + buy_vol_l)
+        remaining_sell = self.pos_limit + (position + sell_vol_l)
+
+        mt_orders = self.market_take(remaining_buy, remaining_sell)
         orders += mt_orders
+        buy_vol_t, sell_vol_t = self.calculate_delta_by_direction(mt_orders)
 
-        mt_orders = liquidated_orders + mt_orders
-
-        pos_delta, neg_delta = self.calculate_delta_by_direction(mt_orders)
-
-        max_long_position = position + pos_delta
-        max_max_short_position = position + neg_delta
+        remaining_buy -= buy_vol_t
+        remaining_sell -= sell_vol_t
 
         positions = {
-            "current": position,
-            "max_long": max_long_position,
-            "max_short": max_max_short_position,
+            "remaining_buy": remaining_buy,
+            "remaining_sell": remaining_sell,
             "mm_pos": mm_position,
         }
 
@@ -322,7 +304,34 @@ class RainforestResin(Product):
         orders += mm_orders
 
         self.print_orders(orders)
+        self.print_product_end()
 
+        return orders
+
+
+class Kelp(Product):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Kelp parameters
+        self.name = "Kelp"
+        self.symbol = "KELP"
+        self.pos_limit = 100
+
+        # Order book
+        self.order_book = OrderBook()
+
+        # Market taking parameters
+        self.mt_positions = PositionBook()
+
+    def calculate_orders(self, order_depths, position, own_trades, timestamp):
+        self.print_product_begin(timestamp)
+        self.order_book.reset(order_depths)
+
+        orders = []
+        self.logger.print(f"position {position}")
+
+        self.print_orders(orders)
         self.print_product_end()
 
         return orders

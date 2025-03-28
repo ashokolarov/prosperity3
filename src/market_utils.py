@@ -58,13 +58,7 @@ class OrderBook:
             [price * volume for price, volume in zip(self.ask_prices, self.ask_volumes)]
         ) / sum(self.ask_volumes)
 
-        vwap = sum(
-            [price * volume for price, volume in zip(self.ask_prices, self.ask_volumes)]
-        ) + sum(
-            [price * volume for price, volume in zip(self.bid_prices, self.bid_volumes)]
-        ) / (
-            sum(self.ask_volumes) + sum(self.bid_volumes)
-        )
+        vwap = (bid_vwap + ask_vwap) / 2
 
         return (
             vwap,
@@ -125,7 +119,9 @@ class OrderBook:
         imbalance = self.calculate_order_book_imbalance()
         lines.append(f"Spread: {spread}\n")
         lines.append(f"Mid Price: {mid_price}\n")
-        lines.append(f"VWAP_BID: {vwap[0]}, VWAP_ASK: {vwap[1]}, VWAP_MID: {vwap[2]}\n")
+        lines.append(
+            f"VWAP: {vwap[0]:.1f}, VWAP_BID: {vwap[1]:.1f}, VWAP_ASK: {vwap[2]:.1f}\n"
+        )
         lines.append(f"Order Book Imbalance: {imbalance:.2f}\n")
 
         return "".join(lines)

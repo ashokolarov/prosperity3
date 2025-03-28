@@ -588,7 +588,7 @@ config_rainforest = {
     "mt_short_pm": 1,
     "mt_long_pm": 1,
     # Market making parameters
-    "mm_default_vol": 10,
+    "mm_default_vol": 15,
 }
 
 

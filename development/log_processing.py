@@ -1,5 +1,5 @@
-from io import StringIO
 import json
+from io import StringIO
 
 import pandas as pd
 
@@ -57,10 +57,10 @@ def extract_trader_data(sandbox_logs):
 
         for line in lines:
             line = line.strip()
-            if line == "TRADER_BEGIN":
+            if line == "TRADER_B":
                 record = True
                 continue
-            elif line == "TRADER_END":
+            elif line == "TRADER_E":
                 record = False
                 trader_data.append(current_trader)
                 continue
@@ -81,18 +81,20 @@ def extract_product_data(sandbox_logs):
 
         for line in lines:
             line = line.strip()
-            if line.startswith("PRODUCT_BEGIN"):
+            if line.startswith("PRODUCT_B"):
                 record = True
                 current_product["product"] = line.split(" ")[1]
                 current_product["orders"] = []
                 continue
-            elif line.startswith("PRODUCT_END"):
+            elif line.startswith("PRODUCT_E"):
                 record = False
                 product = current_product["product"]
                 if product in products_data:
                     products_data[product].append(current_product)
                 else:
                     products_data[product] = [current_product]
+
+                current_product = {}
                 continue
 
             if record:

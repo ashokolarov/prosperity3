@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import dash
 import plotly.graph_objects as go
@@ -12,13 +13,14 @@ def get_visualizer(file_path):
     # Extract the lines
     trader_data, products_data, activities, trades = process_log(file_path)
 
-    products = activities["product"].unique()
+    products = list(products_data.keys())
     timestamps = sorted(activities["timestamp"].unique())
 
     # Initialize Dash app
     app = dash.Dash(__name__)
 
-    app.layout = get_layout(products, timestamps)
+    file_name = os.path.basename(file_path)
+    app.layout = get_layout(products, timestamps, file_name)
 
     @app.callback(
         Output("timestamp-input", "value"),
@@ -62,9 +64,9 @@ def get_visualizer(file_path):
     )
     def update_graphs(selected_product, timestamp_value):
         # Filter data for the selected product
-        product_data = products_data[selected_product]
-        activity = activities[activities["product"] == selected_product]
-        trade = trades[trades["symbol"] == selected_product]
+        product_data = products_data[selected_product].reset_index()
+        activity = activities[activities["product"] == selected_product].reset_index()
+        trade = trades[trades["symbol"] == selected_product].reset_index()
 
         t_idx_prod = product_data[product_data["timestamp"] == timestamp_value].index[0]
         t_idx_act = activity[activity["timestamp"] == timestamp_value].index[0]
@@ -77,7 +79,7 @@ def get_visualizer(file_path):
                 y=product_data["position"],
                 mode="lines",
                 name="Position",
-                line=dict(color="green"),
+                line=dict(color="green", width=4),
                 hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
             )
         )
@@ -87,7 +89,7 @@ def get_visualizer(file_path):
                 y=product_data["mt_position"],
                 mode="lines",
                 name="MT Position",
-                line=dict(color="red", dash="dot"),
+                line=dict(color="red", dash="dot", width=2),
                 hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
             )
         )
@@ -97,7 +99,7 @@ def get_visualizer(file_path):
                 y=product_data["mm_position"],
                 mode="lines",
                 name="MM Position",
-                line=dict(color="blue", dash="dot"),
+                line=dict(color="blue", dash="dot", width=2),
                 hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
             )
         )
@@ -148,6 +150,8 @@ def get_visualizer(file_path):
                 y=activity["profit_and_loss"],
                 mode="lines",
                 name="PnL",
+                line=dict(width=3),
+                hovertemplate="Timestamp: %{x:,.0f}<br>PnL: %{y:,.0f}<extra></extra>",
             )
         )
         pnl_fig.update_layout(
@@ -160,6 +164,57 @@ def get_visualizer(file_path):
             ),
             margin=dict(
                 t=30, b=20, l=20, r=20
+            ),  # Reduce top margin to bring title closer
+        )
+
+        # Mid Price Chart
+        mid_price_fig = go.Figure()
+        mid_price_fig.add_trace(
+            go.Scatter(
+                x=activity["timestamp"],
+                y=activity["mid_price"],
+                mode="lines",
+                name="Mid Price",
+                line=dict(color="blue"),
+                hovertemplate="Timestamp: %{x:,.0f}<br>Mid Price: %{y}<extra></extra>",
+            )
+        )
+        mid_price_fig.add_trace(
+            go.Scatter(
+                x=activity["timestamp"],
+                y=activity["bid_price_1"],
+                mode="lines",
+                name="Best Bid",
+                line=dict(color="red"),
+                hovertemplate="Timestamp: %{x:,.0f}<br>Best Bid: %{y}<extra></extra>",
+            )
+        )
+
+        mid_price_fig.add_trace(
+            go.Scatter(
+                x=activity["timestamp"],
+                y=activity["ask_price_1"],
+                mode="lines",
+                name="Best Ask",
+                line=dict(color="orange"),
+                hovertemplate="Timestamp: %{x:,.0f}<br>Best Ask: %{y}<extra></extra>",
+            )
+        )
+        mid_price_fig.update_layout(
+            title="Mid Price Over Time",
+            xaxis_title="Timestamp",
+            yaxis_title="Price",
+            title_x=0.5,
+            hovermode="x unified",
+            xaxis=dict(
+                tickformat=",d",  # Format tick labels with comma separators and no decimal places
+            ),
+            yaxis=dict(
+                tickformat=",d",  # Format y-axis tick labels with comma separators and no decimal places
+                range=[min(activity["mid_price"] - 4), max(activity["mid_price"]) + 4],
+            ),
+            margin=dict(
+                t=60, b=20, l=20, r=20
             ),  # Reduce top margin to bring title closer
         )
 
@@ -196,6 +251,7 @@ def get_visualizer(file_path):
                     {"bid_volume": bid_volume, "price": price, "ask_volume": ask_volume}
                 )
 
+        # Orders Table
         orders_data = []
         if not activity.empty:
             orders = product_data["orders"].iloc[t_idx_prod]
@@ -203,8 +259,8 @@ def get_visualizer(file_path):
                 orders_data.append(
                     {
                         "Type": "Buy" if order[0] > 0 else "Sell",
-                        "Price": order[0],
-                        "Quantity": abs(order[1]),
+                        "Quantity": order[0],
+                        "Price": order[1],
                     }
                 )
 
@@ -243,30 +299,6 @@ def get_visualizer(file_path):
                     "Value": product_data["mm_position"].iloc[t_idx_prod],
                 }
             )
-
-        # Mid Price Chart
-        mid_price_fig = go.Figure()
-        mid_price_fig.add_trace(
-            go.Scatter(
-                x=activity["timestamp"],
-                y=activity["mid_price"],
-                mode="lines",
-                name="Mid Price",
-                line=dict(color="blue"),
-            )
-        )
-        mid_price_fig.update_layout(
-            title="Mid Price Over Time",
-            xaxis_title="Timestamp",
-            yaxis_title="Price",
-            title_x=0.5,
-            xaxis=dict(
-                tickformat=",d",  # Format tick labels with comma separators and no decimal places
-            ),
-            margin=dict(
-                t=60, b=20, l=20, r=20
-            ),  # Reduce top margin to bring title closer
-        )
 
         return (
             position_fig,
