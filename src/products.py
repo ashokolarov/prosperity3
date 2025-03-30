@@ -51,10 +51,7 @@ class RainforestResin(Product):
 
         # Market making parameters
         self.mm_default_vol = config.get("mm_default_vol")
-        self.mm_skew_factor = config.get("skew_factor")
         self.mm_max_position_factor = config.get("max_position_factor")
-        self.mm_spread_widener = config.get("spread_widener")
-        self.min_spread = config.get("min_spread")
 
     def market_take(self, remaining_buy, remaining_sell):
         # Check if there is an opportunity to market take in ask orders
@@ -142,9 +139,6 @@ class RainforestResin(Product):
 
         position_ratio = positions["position"] / self.pos_limit
 
-        # 1. Quote skewing based on position
-        skew_adjustment = int(position_ratio * self.mm_skew_factor * spread)
-
         price_skew = 0
         # If we have strong buying pressure, shift our quotes higher
         if imbalance > 1.5:
@@ -155,8 +149,8 @@ class RainforestResin(Product):
 
         # Calculate our bid and ask prices
         half_spread = spread // 2
-        bid_price = mid_price - half_spread + 1 - skew_adjustment + price_skew
-        ask_price = mid_price + half_spread - 1 - skew_adjustment + price_skew
+        bid_price = mid_price - half_spread + 1 + price_skew
+        ask_price = mid_price + half_spread - 1 + price_skew
 
         # Make sure our prices are sensible relative to the mean value
         if bid_price > self.mean:
@@ -164,9 +158,11 @@ class RainforestResin(Product):
         if ask_price < self.mean:
             ask_price = int(self.mean)
 
+        buy_volume_factor = max(0, 1 - (position_ratio / self.mm_max_position_factor))
+        sell_volume_factor = max(0, 1 + (position_ratio / self.mm_max_position_factor))
+
         # Scale our order sizes based on how far we are from position limits
         bid_volume = min(self.mm_default_vol, positions["remaining_buy"])
-
         ask_volume = min(self.mm_default_vol, positions["remaining_sell"])
 
         # Create the orders if they make sense
@@ -232,17 +228,161 @@ class Kelp(Product):
         # Kelp parameters
         self.name = "Kelp"
         self.symbol = "KELP"
-        self.pos_limit = 100
+        self.pos_limit = 50
 
         # Order book
         self.order_book = OrderBook()
+
+        self.mm_default_vol = config.get("mm_default_vol")
+
+    def market_take(self, remaining_buy, remaining_sell):
+        # Check if there is an opportunity to market take in ask orders
+        bid_orders = []
+        fair_price = int(self.order_book.mm_fair_price)
+
+        for depth_level in range(self.order_book.ask_orders_depth):
+            ask_price, ask_volume = self.order_book.get_ask_order_at_depth(depth_level)
+            if fair_price >= ask_price:
+                bid_price = ask_price
+                bid_volume = min(remaining_buy, ask_volume)
+                bid_order = Order(self.symbol, bid_price, bid_volume)
+                bid_orders.append(bid_order)
+            else:
+                break  # If even the best ask doesn't cross the mean, then no need to check further
+
+        for bid_order in bid_orders:
+            self.order_book.update(bid_order)
+
+        # Check if there is an opportunity to market take in bid orders
+        ask_orders = []
+        for depth_level in range(self.order_book.bid_orders_depth):
+            bid_price, bid_volume = self.order_book.get_bid_order_at_depth(depth_level)
+            if bid_price >= fair_price:
+                ask_price = bid_price
+                ask_volume = min(remaining_sell, bid_volume)
+                ask_order = Order(self.symbol, ask_price, -ask_volume)
+                ask_orders.append(ask_order)
+            else:
+                break  # If even the best bid doesn't cross the mean, then no need to check further
+
+        for ask_order in ask_orders:
+            self.order_book.update(ask_order)
+
+        return bid_orders + ask_orders
+
+    def liquidate_mt_orders(self, position):
+        close_long = []
+        updated_position = position
+
+        fair_price = int(self.order_book.mm_fair_price)
+        for depth_level in range(self.order_book.bid_orders_depth):
+            if updated_position > 0:
+                bid_price, bid_volume = self.order_book.get_bid_order_at_depth(
+                    depth_level
+                )
+                if bid_price >= fair_price:
+                    qty = min(position, bid_volume)
+                    ask_order = Order(self.symbol, bid_price, -qty)
+                    close_long.append(ask_order)
+                    updated_position -= qty
+                else:
+                    break
+            else:
+                break
+
+        for ask_order in close_long:
+            self.order_book.update(ask_order)
+
+        close_short = []
+        updated_position = position
+        for depth_level in range(self.order_book.ask_orders_depth):
+            if updated_position < 0:
+                ask_price, ask_volume = self.order_book.get_ask_order_at_depth(
+                    depth_level
+                )
+                if ask_price <= fair_price:
+                    qty = min(abs(position), ask_volume)
+                    bid_order = Order(self.symbol, ask_price, qty)
+                    close_short.append(bid_order)
+                    updated_position += qty
+                else:
+                    break
+            else:
+                break
+
+        for bid_order in close_short:
+            self.order_book.update(bid_order)
+
+        return close_long + close_short
+
+    def market_make(self, positions):
+        orders = []
+
+        # Get current market state
+        spread = self.order_book.spread
+        fair_price = self.order_book.mm_fair_price
+
+        # Calculate our bid and ask prices
+        half_spread = spread / 2
+        bid_price = fair_price - half_spread
+        ask_price = fair_price + half_spread
+
+        bid_price = int(bid_price)
+        ask_price = int(ask_price)
+
+        # Scale our order sizes based on how far we are from position limits
+        bid_volume = min(self.mm_default_vol, positions["remaining_buy"])
+        ask_volume = min(self.mm_default_vol, positions["remaining_sell"])
+
+        # Create the orders if they make sense
+        if bid_price > 0 and bid_volume > 0:
+            bid_order = Order(self.symbol, bid_price, bid_volume)
+            orders.append(bid_order)
+            self.order_book.update(bid_order)
+
+        if ask_price > 0 and ask_volume > 0:
+            ask_order = Order(self.symbol, ask_price, -ask_volume)
+            orders.append(ask_order)
+            self.order_book.update(ask_order)
+
+        return orders
+
+    def calculate_delta_by_direction(self, orders):
+        positive_delta = sum(order.quantity for order in orders if order.quantity > 0)
+        negative_delta = sum(order.quantity for order in orders if order.quantity < 0)
+
+        return positive_delta, negative_delta
 
     def calculate_orders(self, order_depths, position, own_trades, timestamp):
         self.print_product_begin(timestamp)
         self.order_book.reset(order_depths)
 
         orders = []
+
         self.logger.print(f"position {position}")
+
+        liquidated_orders = self.liquidate_mt_orders(position)
+        orders += liquidated_orders
+        buy_vol_l, sell_vol_l = self.calculate_delta_by_direction(orders)
+
+        remaining_buy = self.pos_limit - (position + buy_vol_l)
+        remaining_sell = self.pos_limit + (position + sell_vol_l)
+
+        mt_orders = self.market_take(remaining_buy, remaining_sell)
+        orders += mt_orders
+        buy_vol_t, sell_vol_t = self.calculate_delta_by_direction(mt_orders)
+
+        remaining_buy -= buy_vol_t
+        remaining_sell -= sell_vol_t
+
+        positions = {
+            "remaining_buy": remaining_buy,
+            "remaining_sell": remaining_sell,
+            "position": position,
+        }
+
+        mm_orders = self.market_make(positions)
+        orders += mm_orders
 
         self.print_orders(orders)
         self.print_product_end()

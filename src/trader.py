@@ -14,13 +14,12 @@ config_rainforest = {
     "mt_long_pm": 0,
     # Market making parameters
     "mm_default_vol": 15,
-    "skew_factor": 0.1,  # How much to skew quotes based on position
-    "max_position_factor": 0.7,  # Maximum position as a factor of position limit
-    "spread_widener": 0.2,  # How much to widen spread as position grows
-    "min_spread": 2,  # Minimum spread regardless of position
+    "max_position_factor": 0.8,  # Maximum position as a factor of position limit
 }
 
-config_kelp = {}
+config_kelp = {
+    "mm_default_vol": 10,
+}
 
 
 class Trader:
@@ -37,7 +36,7 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
         else:
             traderData = jsonpickle.decode(state.traderData)

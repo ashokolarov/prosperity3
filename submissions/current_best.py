@@ -3,17 +3,12 @@
 
 # Import statements
 from abc import ABC, abstractmethod
-
-from datamodel import Order
-
-from datamodel import TradingState
-
 from time import time
-
 from typing import Any
 
 import jsonpickle
 
+from datamodel import Order, TradingState
 
 
 # Code from market_utils.py
@@ -276,6 +271,7 @@ class PositionBook:
 
         return "".join(lines)
 
+
 # Code from products.py
 class Product(ABC):
     name: str = None
@@ -518,6 +514,7 @@ class Kelp(Product):
 
         return orders
 
+
 # Code from trader.py
 config_rainforest = {
     # Market taking parameters
@@ -586,6 +583,7 @@ class Trader:
         self.logger.flush()
 
         return result, conversions, traderData
+
 
 # Code from utils.py
 class CustomLogger:

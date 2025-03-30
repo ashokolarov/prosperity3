@@ -5,7 +5,17 @@ class OrderBook:
         self.bid_prices = []
         self.bid_volumes = []
 
+        self.prev_vwap = None
+        self.prev_spread = None
+        self.prev_mmf = None
+
     def reset(self, order_depths):
+        """Reset the order book with the current order depths."""
+
+        self.prev_spread = self.spread
+        self.prev_vwap = self.vwap
+        self.prev_mmf = self.mm_fair_price
+
         sell_orders = order_depths.sell_orders
         buy_orders = order_depths.buy_orders
 
@@ -43,7 +53,11 @@ class OrderBook:
 
     @property
     def spread(self):
-        return self.ask_prices[0] - self.bid_prices[0]
+        try:
+            spread = self.ask_prices[0] - self.bid_prices[0]
+        except:
+            spread = self.prev_spread
+        return spread
 
     @property
     def mid_price(self):
@@ -51,20 +65,39 @@ class OrderBook:
 
     @property
     def vwap(self):
-        bid_vwap = sum(
-            [price * volume for price, volume in zip(self.bid_prices, self.bid_volumes)]
-        ) / sum(self.bid_volumes)
-        ask_vwap = sum(
-            [price * volume for price, volume in zip(self.ask_prices, self.ask_volumes)]
-        ) / sum(self.ask_volumes)
+        try:
+            bid_vwap = sum(
+                [
+                    price * volume
+                    for price, volume in zip(self.bid_prices, self.bid_volumes)
+                ]
+            ) / sum(self.bid_volumes)
+            ask_vwap = sum(
+                [
+                    price * volume
+                    for price, volume in zip(self.ask_prices, self.ask_volumes)
+                ]
+            ) / sum(self.ask_volumes)
 
-        vwap = (bid_vwap + ask_vwap) / 2
+            vwap = (bid_vwap + ask_vwap) / 2
+        except:
+            vwap = self.prev_vwap
 
-        return (
-            vwap,
-            bid_vwap,
-            ask_vwap,
-        )
+        return vwap
+
+    @property
+    def mm_fair_price(self):
+        if len(self.ask_prices) == 0:
+            return self.prev_mmf
+        elif len(self.bid_prices) == 0:
+            return self.prev_mmf
+        else:
+            max_ask_index = self.ask_prices.index(max(self.ask_prices))
+            max_bid_index = self.bid_prices.index(max(self.bid_prices))
+            price = (
+                self.ask_prices[max_ask_index] + self.bid_prices[max_bid_index]
+            ) / 2
+            return price
 
     def calculate_order_book_imbalance(self):
         """Calculate the order book imbalance ratio."""
@@ -119,9 +152,7 @@ class OrderBook:
         imbalance = self.calculate_order_book_imbalance()
         lines.append(f"Spread: {spread}\n")
         lines.append(f"Mid Price: {mid_price}\n")
-        lines.append(
-            f"VWAP: {vwap[0]:.1f}, VWAP_BID: {vwap[1]:.1f}, VWAP_ASK: {vwap[2]:.1f}\n"
-        )
+        lines.append(f"VWAP: {vwap:.1f}\n")
         lines.append(f"Order Book Imbalance: {imbalance:.2f}\n")
 
         return "".join(lines)
