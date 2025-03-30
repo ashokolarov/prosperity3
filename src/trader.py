@@ -8,12 +8,16 @@ from utils import CustomLogger
 
 config_rainforest = {
     # Market taking parameters
-    "mt_bid_edge": 0,
-    "mt_ask_edge": 0,
-    "mt_short_pm": 1,
-    "mt_long_pm": 1,
+    "mt_bid_edge": 1,
+    "mt_ask_edge": 1,
+    "mt_short_pm": 0,
+    "mt_long_pm": 0,
     # Market making parameters
     "mm_default_vol": 15,
+    "skew_factor": 0.1,  # How much to skew quotes based on position
+    "max_position_factor": 0.7,  # Maximum position as a factor of position limit
+    "spread_widener": 0.2,  # How much to widen spread as position grows
+    "min_spread": 2,  # Minimum spread regardless of position
 }
 
 config_kelp = {}

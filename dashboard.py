@@ -83,26 +83,28 @@ def get_visualizer(file_path):
                 hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
             )
         )
-        position_fig.add_trace(
-            go.Scatter(
-                x=product_data["timestamp"],
-                y=product_data["mt_position"],
-                mode="lines",
-                name="MT Position",
-                line=dict(color="red", dash="dot", width=2),
-                hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
+        if "mt_position" in product_data.columns:
+            position_fig.add_trace(
+                go.Scatter(
+                    x=product_data["timestamp"],
+                    y=product_data["mt_position"],
+                    mode="lines",
+                    name="MT Position",
+                    line=dict(color="red", dash="dot", width=2),
+                    hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
+                )
             )
-        )
-        position_fig.add_trace(
-            go.Scatter(
-                x=product_data["timestamp"],
-                y=product_data["mm_position"],
-                mode="lines",
-                name="MM Position",
-                line=dict(color="blue", dash="dot", width=2),
-                hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
+        if "mm_position" in product_data.columns:
+            position_fig.add_trace(
+                go.Scatter(
+                    x=product_data["timestamp"],
+                    y=product_data["mm_position"],
+                    mode="lines",
+                    name="MM Position",
+                    line=dict(color="blue", dash="dot", width=2),
+                    hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
+                )
             )
-        )
 
         # Add a horizontal line at y=0
         position_fig.add_shape(
@@ -290,13 +292,17 @@ def get_visualizer(file_path):
             position_data.append(
                 {
                     "Position_Type": "MT Position",
-                    "Value": product_data["mt_position"].iloc[t_idx_prod],
+                    "Value": product_data["mt_position"].iloc[t_idx_prod]
+                    if "mt_position" in product_data.columns
+                    else 0,
                 }
             )
             position_data.append(
                 {
                     "Position_Type": "MM Position",
-                    "Value": product_data["mm_position"].iloc[t_idx_prod],
+                    "Value": product_data["mm_position"].iloc[t_idx_prod]
+                    if "mm_position" in product_data.columns
+                    else 0,
                 }
             )
 
