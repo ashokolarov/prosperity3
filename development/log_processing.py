@@ -104,9 +104,12 @@ def extract_product_data(sandbox_logs):
                     price, volume = value.split("@")
                     current_product["orders"].append([int(price), int(volume)])
                 else:
-                    current_product[key] = (
-                        int(value) if is_integer(value) else float(value)
-                    )
+                    if value != "None":
+                        current_product[key] = (
+                            int(value) if is_integer(value) else float(value)
+                        )
+                    else:
+                        current_product[key] = None
 
     for product in products_data:
         products_data[product] = pd.DataFrame(products_data[product])

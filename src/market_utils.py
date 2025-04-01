@@ -5,17 +5,7 @@ class OrderBook:
         self.bid_prices = []
         self.bid_volumes = []
 
-        self.prev_vwap = None
-        self.prev_spread = None
-        self.prev_mmf = None
-
     def reset(self, order_depths):
-        """Reset the order book with the current order depths."""
-
-        self.prev_spread = self.spread
-        self.prev_vwap = self.vwap
-        self.prev_mmf = self.mm_fair_price
-
         sell_orders = order_depths.sell_orders
         buy_orders = order_depths.buy_orders
 
@@ -29,11 +19,19 @@ class OrderBook:
 
     def get_ask_order_at_depth(self, depth):
         assert depth < self.ask_orders_depth and depth >= 0
-        return self.ask_prices[depth], self.ask_volumes[depth]
+
+        if len(self.ask_prices) == 0:
+            return None
+        else:
+            return self.ask_prices[depth], self.ask_volumes[depth]
 
     def get_bid_order_at_depth(self, depth):
         assert depth < self.bid_orders_depth and depth >= 0
-        return self.bid_prices[depth], self.bid_volumes[depth]
+
+        if len(self.bid_prices) == 0:
+            return None
+        else:
+            return self.bid_prices[depth], self.bid_volumes[depth]
 
     @property
     def bid_orders_depth(self):
@@ -44,28 +42,24 @@ class OrderBook:
         return len(self.ask_prices)
 
     @property
-    def best_ask(self):
-        return self.ask_prices[0], self.ask_volumes[0]
-
-    @property
-    def best_bid(self):
-        return self.bid_prices[0], self.bid_volumes[0]
-
-    @property
     def spread(self):
-        try:
-            spread = self.ask_prices[0] - self.bid_prices[0]
-        except:
-            spread = self.prev_spread
-        return spread
+        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+            return None
+        else:
+            return self.ask_prices[0] - self.bid_prices[0]
 
     @property
     def mid_price(self):
-        return (self.ask_prices[0] + self.bid_prices[0]) / 2
+        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+            return None
+        else:
+            return (self.ask_prices[0] + self.bid_prices[0]) / 2
 
     @property
     def vwap(self):
-        try:
+        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+            return None
+        else:
             bid_vwap = sum(
                 [
                     price * volume
@@ -80,26 +74,37 @@ class OrderBook:
             ) / sum(self.ask_volumes)
 
             vwap = (bid_vwap + ask_vwap) / 2
-        except:
-            vwap = self.prev_vwap
 
-        return vwap
+            return vwap
+
+    @property
+    def mm_spread(self):
+        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+            return None
+        else:
+            max_ask_volume_index = self.ask_volumes.index(max(self.ask_volumes))
+            max_bid_volume_index = self.bid_volumes.index(max(self.bid_volumes))
+            ask_price_at_max_volume = self.ask_prices[max_ask_volume_index]
+            bid_price_at_max_volume = self.bid_prices[max_bid_volume_index]
+            return ask_price_at_max_volume - bid_price_at_max_volume
 
     @property
     def mm_fair_price(self):
-        if len(self.ask_prices) == 0:
-            return self.prev_mmf
-        elif len(self.bid_prices) == 0:
-            return self.prev_mmf
+        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+            return None
         else:
-            max_ask_index = self.ask_prices.index(max(self.ask_prices))
-            max_bid_index = self.bid_prices.index(max(self.bid_prices))
-            price = (
-                self.ask_prices[max_ask_index] + self.bid_prices[max_bid_index]
-            ) / 2
-            return price
+            if max(self.ask_volumes) > 10 and max(self.bid_volumes) > 10:
+                max_ask_volume_index = self.ask_volumes.index(max(self.ask_volumes))
+                max_bid_volume_index = self.bid_volumes.index(max(self.bid_volumes))
+                ask_price_at_max_volume = self.ask_prices[max_ask_volume_index]
+                bid_price_at_max_volume = self.bid_prices[max_bid_volume_index]
+                fair_price = (ask_price_at_max_volume + bid_price_at_max_volume) / 2
+                return fair_price
+            else:
+                return None
 
-    def calculate_order_book_imbalance(self):
+    @property
+    def imbalance(self):
         """Calculate the order book imbalance ratio."""
         total_bid_volume = sum(self.bid_volumes)
         total_ask_volume = sum(self.ask_volumes)
@@ -149,7 +154,7 @@ class OrderBook:
         spread = self.spread
         mid_price = self.mid_price
         vwap = self.vwap
-        imbalance = self.calculate_order_book_imbalance()
+        imbalance = self.imbalance
         lines.append(f"Spread: {spread}\n")
         lines.append(f"Mid Price: {mid_price}\n")
         lines.append(f"VWAP: {vwap:.1f}\n")
@@ -213,3 +218,99 @@ class OrderBook:
         self.ask_volumes = [order[1] for order in self.sell_orders]
         self.bid_prices = [order[0] for order in self.buy_orders]
         self.bid_volumes = [order[1] for order in self.buy_orders]
+
+
+class PositionBook:
+    def __init__(self):
+        self.long_pos = {"price": 0, "quantity": 0}
+        self.short_pos = {"price": 0, "quantity": 0}
+
+    @property
+    def tot_position(self):
+        return self.long_pos["quantity"] - self.short_pos["quantity"]
+
+    def add_pos(self, order):
+        price = order.price
+        qty = order.quantity
+
+        # Update positions based on order side
+        if qty > 0:  # Long position (buying)
+            if self.long_pos["quantity"] == 0:
+                new_price = price
+            else:
+                # Calculate weighted average price
+                new_price = (
+                    self.long_pos["price"] * self.long_pos["quantity"] + price * qty
+                ) / (self.long_pos["quantity"] + qty)
+
+            self.long_pos["price"] = new_price
+            self.long_pos["quantity"] += qty
+
+        else:  # Short position (selling)
+            abs_qty = abs(qty)
+            if self.short_pos["quantity"] == 0:
+                new_price = price
+            else:
+                # Calculate weighted average price
+                new_price = (
+                    self.short_pos["price"] * self.short_pos["quantity"]
+                    + price * abs_qty
+                ) / (self.short_pos["quantity"] + abs_qty)
+
+            self.short_pos["price"] = new_price
+            self.short_pos["quantity"] += abs_qty
+
+    def remove_pos(self, order):
+        price = order.price
+        qty = order.quantity
+
+        # Update positions based on order side
+        if qty > 0:  # Buying - reduces short position
+            abs_qty = qty
+            if self.short_pos["quantity"] > 0:
+                # Calculate P&L for this liquidation
+                pnl = (self.short_pos["price"] - price) * abs_qty
+
+                # Update short position
+                self.short_pos["quantity"] -= abs_qty
+
+                # Reset price if position is fully liquidated
+                if self.short_pos["quantity"] == 0:
+                    self.short_pos["price"] = 0
+
+                return pnl
+            return 0  # No short position to liquidate
+        else:  # Selling - reduces long position
+            abs_qty = abs(qty)
+            if self.long_pos["quantity"] > 0:
+                # Calculate P&L for this liquidation
+                pnl = (price - self.long_pos["price"]) * abs_qty
+
+                # Update long position
+                self.long_pos["quantity"] -= abs_qty
+
+                # Reset price if position is fully liquidated
+                if self.long_pos["quantity"] == 0:
+                    self.long_pos["price"] = 0
+
+                return pnl
+            return 0  # No long position to liquidate
+
+    def __repr__(self):
+        lines = ["POSITION SUMMARY:\n"]
+
+        if self.long_pos["quantity"] > 0:
+            lines.append(
+                f"LONG: {self.long_pos['quantity']} @ avg {self.long_pos['price']:.2f}\n"
+            )
+
+        if self.short_pos["quantity"] > 0:
+            lines.append(
+                f"SHORT: {self.short_pos['quantity']} @ avg {self.short_pos['price']:.2f}\n"
+            )
+
+        lines.append(
+            f"NET POSITION: {self.long_pos['quantity'] - self.short_pos['quantity']}\n"
+        )
+
+        return "".join(lines)

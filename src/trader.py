@@ -7,18 +7,21 @@ from products import Kelp, RainforestResin
 from utils import CustomLogger
 
 config_rainforest = {
+    "history_size": 10,
     # Market taking parameters
     "mt_bid_edge": 1,
     "mt_ask_edge": 1,
-    "mt_short_pm": 0,
-    "mt_long_pm": 0,
+    "mt_short_pm": 3,
+    "mt_long_pm": 3,
     # Market making parameters
     "mm_default_vol": 15,
-    "max_position_factor": 0.8,  # Maximum position as a factor of position limit
 }
 
 config_kelp = {
-    "mm_default_vol": 10,
+    # Market taking parameters
+    "d_default_vol": 15,
+    "d_short_window": 5,
+    "d_long_window": 40,
 }
 
 
@@ -36,8 +39,8 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
-            products["KELP"] = Kelp(config_kelp)
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            # products["KELP"] = Kelp(config_kelp)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
