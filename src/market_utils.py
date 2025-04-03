@@ -1,5 +1,5 @@
 class OrderBook:
-    def __init__(self):
+    def __init__(self, avg_ratio=0):
         self.ask_prices = []
         self.ask_volumes = []
         self.bid_prices = []
@@ -8,6 +8,7 @@ class OrderBook:
         self.prev_vwap = None
         self.prev_spread = None
         self.prev_mmf = None
+        self.avg_ratio = avg_ratio
 
     def reset(self, order_depths):
         """Reset the order book with the current order depths."""
@@ -87,17 +88,39 @@ class OrderBook:
 
     @property
     def mm_fair_price(self):
+        
         if len(self.ask_prices) == 0:
             return self.prev_mmf
         elif len(self.bid_prices) == 0:
             return self.prev_mmf
-        else:
+        elif self.prev_mmf == None:
             max_ask_index = self.ask_prices.index(max(self.ask_prices))
             max_bid_index = self.bid_prices.index(max(self.bid_prices))
             price = (
                 self.ask_prices[max_ask_index] + self.bid_prices[max_bid_index]
             ) / 2
             return price
+        else:
+            max_ask_index = self.ask_prices.index(max(self.ask_prices))
+            max_bid_index = self.bid_prices.index(max(self.bid_prices))
+            price = (
+                self.ask_prices[max_ask_index] + self.bid_prices[max_bid_index]
+            ) / 2
+            price = self.prev_mmf*(1-self.avg_ratio) + price*self.avg_ratio
+            return price
+
+    @property
+    def mm_spread(self):
+        if len(self.ask_prices) == 0:
+            return None
+        elif len(self.bid_prices) == 0:
+            return None
+        else:
+            max_ask_index = self.ask_prices.index(max(self.ask_prices))
+            max_bid_index = self.bid_prices.index(max(self.bid_prices))
+            spread = self.ask_prices[max_ask_index] - self.bid_prices[max_bid_index]
+            return spread
+
 
     def calculate_order_book_imbalance(self):
         """Calculate the order book imbalance ratio."""

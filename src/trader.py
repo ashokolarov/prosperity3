@@ -19,6 +19,7 @@ config_rainforest = {
 
 config_kelp = {
     "mm_default_vol": 10,
+    "averaging_ratio": 0.2
 }
 
 

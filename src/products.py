@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from datamodel import Order
 from market_utils import OrderBook
 from utils import CustomLogger
-
+import math
 
 class Product(ABC):
     name: str = None
@@ -229,11 +229,12 @@ class Kelp(Product):
         self.name = "Kelp"
         self.symbol = "KELP"
         self.pos_limit = 50
-
-        # Order book
-        self.order_book = OrderBook()
+        
 
         self.mm_default_vol = config.get("mm_default_vol")
+        self.avging_ratio = config.get("averaging_ratio", 0.0)  # New line
+
+        self.order_book = OrderBook(avg_ratio=self.avging_ratio)
 
     def market_take(self, remaining_buy, remaining_sell):
         # Check if there is an opportunity to market take in ask orders
@@ -316,35 +317,36 @@ class Kelp(Product):
         return close_long + close_short
 
     def market_make(self, positions):
-        orders = []
-
-        # Get current market state
-        spread = self.order_book.spread
-        fair_price = self.order_book.mm_fair_price
-
-        # Calculate our bid and ask prices
-        half_spread = spread / 2
-        bid_price = fair_price - half_spread
-        ask_price = fair_price + half_spread
-
-        bid_price = int(bid_price)
-        ask_price = int(ask_price)
-
-        # Scale our order sizes based on how far we are from position limits
+        # Get the position limits
         bid_volume = min(self.mm_default_vol, positions["remaining_buy"])
         ask_volume = min(self.mm_default_vol, positions["remaining_sell"])
+        pos_available = min(bid_volume, ask_volume)
+        orders = []
+        if not pos_available==0:
+            
+            # Get current market state
+            spread = self.order_book.mm_spread if self.order_book.mm_spread else 1
+            fair_price = self.order_book.mm_fair_price
 
-        # Create the orders if they make sense
-        if bid_price > 0 and bid_volume > 0:
-            bid_order = Order(self.symbol, bid_price, bid_volume)
-            orders.append(bid_order)
-            self.order_book.update(bid_order)
+            # Calculate our bid and ask prices
+            half_spread = spread / 2
+            bid_price = math.ceil(fair_price - half_spread)
+            ask_price = math.floor(fair_price + half_spread)
 
-        if ask_price > 0 and ask_volume > 0:
-            ask_order = Order(self.symbol, ask_price, -ask_volume)
-            orders.append(ask_order)
-            self.order_book.update(ask_order)
+            bid_price = int(bid_price)
+            ask_price = int(ask_price)
 
+
+            # Create the orders if they make sense
+            if bid_price > 0 and bid_volume > 0:
+                bid_order = Order(self.symbol, bid_price, pos_available)
+                orders.append(bid_order)
+                self.order_book.update(bid_order)
+
+            if ask_price > 0 and ask_volume > 0:
+                ask_order = Order(self.symbol, ask_price, -pos_available)
+                orders.append(ask_order)
+                self.order_book.update(ask_order)
         return orders
 
     def calculate_delta_by_direction(self, orders):
