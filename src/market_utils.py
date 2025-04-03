@@ -88,7 +88,6 @@ class OrderBook:
 
     @property
     def mm_fair_price(self):
-        
         if len(self.ask_prices) == 0:
             return self.prev_mmf
         elif len(self.bid_prices) == 0:
@@ -106,7 +105,7 @@ class OrderBook:
             price = (
                 self.ask_prices[max_ask_index] + self.bid_prices[max_bid_index]
             ) / 2
-            price = self.prev_mmf*(1-self.avg_ratio) + price*self.avg_ratio
+            price = self.prev_mmf * (1 - self.avg_ratio) + price * self.avg_ratio
             return price
 
     @property
@@ -120,7 +119,6 @@ class OrderBook:
             max_bid_index = self.bid_prices.index(max(self.bid_prices))
             spread = self.ask_prices[max_ask_index] - self.bid_prices[max_bid_index]
             return spread
-
 
     def calculate_order_book_imbalance(self):
         """Calculate the order book imbalance ratio."""
@@ -187,10 +185,11 @@ class OrderBook:
                 if self.ask_volumes[index] > order.quantity:
                     self.ask_volumes[index] -= order.quantity
                 elif self.ask_volumes[index] < order.quantity:
+                    volumes = self.ask_volumes
+                    self.bid_volumes.append(order.quantity - volumes[index])
+                    self.bid_prices.append(order.price)
                     self.ask_prices.pop(index)
                     self.ask_volumes.pop(index)
-                    self.bid_volumes.append(order.quantity - self.ask_volumes[index])
-                    self.bid_prices.append(order.price)
                 else:
                     self.ask_prices.pop(index)
                     self.ask_volumes.pop(index)
@@ -207,12 +206,11 @@ class OrderBook:
                 if self.bid_volumes[index] > abs(order.quantity):
                     self.bid_volumes[index] -= abs(order.quantity)
                 elif self.bid_volumes[index] < abs(order.quantity):
+                    volumes = self.bid_volumes
+                    self.ask_volumes.append(abs(order.quantity) - volumes[index])
+                    self.ask_prices.append(order.price)
                     self.bid_prices.pop(index)
                     self.bid_volumes.pop(index)
-                    self.ask_volumes.append(
-                        abs(order.quantity) - self.bid_volumes[index]
-                    )
-                    self.ask_prices.append(order.price)
                 else:
                     self.bid_prices.pop(index)
                     self.bid_volumes.pop(index)

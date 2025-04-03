@@ -17,10 +17,7 @@ config_rainforest = {
     "max_position_factor": 0.8,  # Maximum position as a factor of position limit
 }
 
-config_kelp = {
-    "mm_default_vol": 10,
-    "averaging_ratio": 0.2
-}
+config_kelp = {"mm_default_vol": 10, "averaging_ratio": 0.5}
 
 
 class Trader:
