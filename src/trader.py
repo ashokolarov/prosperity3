@@ -7,14 +7,17 @@ from products import Kelp, RainforestResin
 from utils import CustomLogger
 
 config_rainforest = {
-    "history_size": 10,
+    "update_order_book": True,
     # Market taking parameters
     "mt_bid_edge": 1,
     "mt_ask_edge": 1,
-    "mt_short_pm": 3,
-    "mt_long_pm": 3,
+    "mt_long_pm": 0,
+    "mt_short_pm": 0,
     # Market making parameters
+    "history_size": 25,
+    "fair_price": "vwap",
     "mm_default_vol": 15,
+    "mm_ofi_sensitivity": 0.035,
 }
 
 config_kelp = {

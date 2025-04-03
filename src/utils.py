@@ -4,9 +4,20 @@ from typing import Any
 class CustomLogger:
     def __init__(self) -> None:
         self.logs = ""
+        self.end = "\n"
+        self.sep = " "
 
-    def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
-        self.logs += sep.join(map(str, objects)) + end
+    def print(self, *objects: Any) -> None:
+        self.logs += self.sep.join(map(str, objects)) + self.end
+
+    def print_numeric(self, label, value, end="\n") -> None:
+        """Print a labeled numeric value with consistent formatting."""
+        if isinstance(value, float):
+            self.logs += f"{label} {value:.2f}"
+        else:
+            self.logs += f"{label} {value}"
+
+        self.logs += end
 
     def flush(self):
         print(self.logs)

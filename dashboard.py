@@ -52,6 +52,7 @@ def get_visualizer(file_path):
             Output("pnl-chart", "figure"),
             Output("mid-price-chart", "figure"),
             Output("order-book-table", "data"),
+            Output("ob-stats-table", "data"),
             Output("orders-table", "data"),
             Output("trades-table", "data"),
             Output("positions-table", "data"),
@@ -253,6 +254,18 @@ def get_visualizer(file_path):
                     {"bid_volume": bid_volume, "price": price, "ask_volume": ask_volume}
                 )
 
+        order_stats_data = []
+        if not activity.empty:
+            names = ["mid_price", "vwap", "fair_price", "volatility"]
+            for name in names:
+                if name in product_data.columns:
+                    order_stats_data.append(
+                        {
+                            "Name": name,
+                            "Value": product_data[name].iloc[t_idx_prod],
+                        }
+                    )
+
         # Orders Table
         orders_data = []
         if not activity.empty:
@@ -311,6 +324,7 @@ def get_visualizer(file_path):
             pnl_fig,
             mid_price_fig,
             order_book_data,
+            order_stats_data,
             orders_data,
             trades_data,
             position_data,

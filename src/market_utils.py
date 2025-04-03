@@ -1,3 +1,6 @@
+from copy import deepcopy
+
+
 class OrderBook:
     def __init__(self):
         self.ask_prices = []
@@ -5,10 +8,22 @@ class OrderBook:
         self.bid_prices = []
         self.bid_volumes = []
 
+        self.previous_ask_prices = []
+        self.previous_ask_volumes = []
+        self.previous_bid_prices = []
+        self.previous_bid_volumes = []
+
     def reset(self, order_depths):
         sell_orders = order_depths.sell_orders
         buy_orders = order_depths.buy_orders
 
+        # Save previous state
+        self.previous_ask_prices = deepcopy(self.ask_prices)
+        self.previous_ask_volumes = deepcopy(self.ask_volumes)
+        self.previous_bid_prices = deepcopy(self.bid_prices)
+        self.previous_bid_volumes = deepcopy(self.bid_volumes)
+
+        # Reset order book
         sell_orders = list(sell_orders.items())
         self.ask_prices = [order[0] for order in sell_orders]
         self.ask_volumes = [abs(order[1]) for order in sell_orders]
@@ -117,6 +132,20 @@ class OrderBook:
 
         return total_bid_volume / total_ask_volume
 
+    def calculate_ofi(self):
+        if len(self.previous_ask_prices) == 0 or len(self.previous_bid_prices) == 0:
+            return 0
+        else:
+            total_bid_volume = sum(self.bid_volumes)
+            total_ask_volume = sum(self.ask_volumes)
+            total_bid_volume_prev = sum(self.previous_bid_volumes)
+            total_ask_volume_prev = sum(self.previous_ask_volumes)
+
+            delta_bid = total_bid_volume - total_bid_volume_prev
+            delta_ask = total_ask_volume - total_ask_volume_prev
+
+            return delta_bid - delta_ask
+
     def __repr__(self):
         repr_str = "BID ORDER PRICE | VOLUME | ASK ORDER PRICE\n"
         length = max(self.ask_prices) - min(self.bid_prices)
@@ -218,99 +247,3 @@ class OrderBook:
         self.ask_volumes = [order[1] for order in self.sell_orders]
         self.bid_prices = [order[0] for order in self.buy_orders]
         self.bid_volumes = [order[1] for order in self.buy_orders]
-
-
-class PositionBook:
-    def __init__(self):
-        self.long_pos = {"price": 0, "quantity": 0}
-        self.short_pos = {"price": 0, "quantity": 0}
-
-    @property
-    def tot_position(self):
-        return self.long_pos["quantity"] - self.short_pos["quantity"]
-
-    def add_pos(self, order):
-        price = order.price
-        qty = order.quantity
-
-        # Update positions based on order side
-        if qty > 0:  # Long position (buying)
-            if self.long_pos["quantity"] == 0:
-                new_price = price
-            else:
-                # Calculate weighted average price
-                new_price = (
-                    self.long_pos["price"] * self.long_pos["quantity"] + price * qty
-                ) / (self.long_pos["quantity"] + qty)
-
-            self.long_pos["price"] = new_price
-            self.long_pos["quantity"] += qty
-
-        else:  # Short position (selling)
-            abs_qty = abs(qty)
-            if self.short_pos["quantity"] == 0:
-                new_price = price
-            else:
-                # Calculate weighted average price
-                new_price = (
-                    self.short_pos["price"] * self.short_pos["quantity"]
-                    + price * abs_qty
-                ) / (self.short_pos["quantity"] + abs_qty)
-
-            self.short_pos["price"] = new_price
-            self.short_pos["quantity"] += abs_qty
-
-    def remove_pos(self, order):
-        price = order.price
-        qty = order.quantity
-
-        # Update positions based on order side
-        if qty > 0:  # Buying - reduces short position
-            abs_qty = qty
-            if self.short_pos["quantity"] > 0:
-                # Calculate P&L for this liquidation
-                pnl = (self.short_pos["price"] - price) * abs_qty
-
-                # Update short position
-                self.short_pos["quantity"] -= abs_qty
-
-                # Reset price if position is fully liquidated
-                if self.short_pos["quantity"] == 0:
-                    self.short_pos["price"] = 0
-
-                return pnl
-            return 0  # No short position to liquidate
-        else:  # Selling - reduces long position
-            abs_qty = abs(qty)
-            if self.long_pos["quantity"] > 0:
-                # Calculate P&L for this liquidation
-                pnl = (price - self.long_pos["price"]) * abs_qty
-
-                # Update long position
-                self.long_pos["quantity"] -= abs_qty
-
-                # Reset price if position is fully liquidated
-                if self.long_pos["quantity"] == 0:
-                    self.long_pos["price"] = 0
-
-                return pnl
-            return 0  # No long position to liquidate
-
-    def __repr__(self):
-        lines = ["POSITION SUMMARY:\n"]
-
-        if self.long_pos["quantity"] > 0:
-            lines.append(
-                f"LONG: {self.long_pos['quantity']} @ avg {self.long_pos['price']:.2f}\n"
-            )
-
-        if self.short_pos["quantity"] > 0:
-            lines.append(
-                f"SHORT: {self.short_pos['quantity']} @ avg {self.short_pos['price']:.2f}\n"
-            )
-
-        lines.append(
-            f"NET POSITION: {self.long_pos['quantity'] - self.short_pos['quantity']}\n"
-        )
-
-        return "".join(lines)

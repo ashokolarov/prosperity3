@@ -136,7 +136,6 @@ def get_layout(products, timestamps, log_name):
             ),
             html.Div(
                 [
-                    # Order Book Table
                     html.Div(
                         [
                             html.H3("Order Book", style={"textAlign": "center"}),
@@ -174,6 +173,38 @@ def get_layout(products, timestamps, log_name):
                                 style_table={
                                     "width": "350px",
                                     "margin": "0 auto",
+                                },
+                            ),
+                        ],
+                        style={
+                            "width": "25%",
+                            "display": "inline-block",
+                            "verticalAlign": "top",
+                            "marginRight": "1%",
+                        },
+                    ),
+                    # Orders Table
+                    html.Div(
+                        [
+                            html.H3(
+                                "Order Book Statistics", style={"textAlign": "center"}
+                            ),
+                            html.Div(
+                                dash_table.DataTable(
+                                    id="ob-stats-table",
+                                    columns=[
+                                        {"name": "Name", "id": "Name"},
+                                        {
+                                            "name": "Value",
+                                            "id": "Value",
+                                            "type": "numeric",
+                                        },
+                                    ],
+                                    style_table={"width": "200px"},
+                                ),
+                                style={
+                                    "display": "flex",
+                                    "justifyContent": "center",
                                 },
                             ),
                         ],
@@ -278,6 +309,7 @@ def get_layout(products, timestamps, log_name):
                             "width": "25%",
                             "display": "inline-block",
                             "verticalAlign": "top",
+                            "marginRight": "10px",
                         },
                     ),
                     html.Div(
@@ -297,7 +329,7 @@ def get_layout(products, timestamps, log_name):
                                             "type": "numeric",
                                         },
                                     ],
-                                    style_table={"width": "100%"},
+                                    style_table={"width": "200px"},
                                     style_data_conditional=[
                                         {
                                             "if": {"filter_query": "{Value} > 0"},
@@ -310,15 +342,6 @@ def get_layout(products, timestamps, log_name):
                                             "fontWeight": "bold",
                                         },
                                     ],
-                                    style_cell={
-                                        "textAlign": "center",
-                                        "fontSize": "16px",
-                                        "padding": "10px 15px",
-                                    },
-                                    style_header={
-                                        "fontWeight": "bold",
-                                        "backgroundColor": "#f8f9fa",
-                                    },
                                 ),
                                 style={
                                     "display": "flex",
@@ -330,6 +353,7 @@ def get_layout(products, timestamps, log_name):
                             "width": "25%",
                             "display": "inline-block",
                             "verticalAlign": "top",
+                            "marginRight": "10px",
                         },
                     ),
                 ],
