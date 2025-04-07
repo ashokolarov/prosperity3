@@ -14,17 +14,29 @@ config_rainforest = {
     "mt_long_pm": 0,
     "mt_short_pm": 0,
     # Market making parameters
-    "history_size": 25,
-    "fair_price": "vwap",
     "mm_default_vol": 15,
-    "mm_ofi_sensitivity": 0.035,
+    "mm_default_edge": 4,
+    "mm_disregard_edge": 1,
+    "mm_join_edge": 2,
+    "mm_join_volume": 3,
+    "mm_join_edge_2": 4,
+    "mm_join_volume_2": 1,
 }
 
 config_kelp = {
+    # General
+    "update_order_book": True,
+    "price_window": 10,
+    "adverse_volume": 10,  # Market taking parameters
+    "n_points": 3,
+    "p_degree": 1,
     # Market taking parameters
-    "d_default_vol": 15,
-    "d_short_window": 5,
-    "d_long_window": 40,
+    "mt_take_width": 1,
+    "mt_clear_width": 0,
+    "mt_reversion_beta": -0.14,
+    # Market making parameters
+    "mm_default_vol": 15,
+    "mm_disregard_edge": 2,
 }
 
 

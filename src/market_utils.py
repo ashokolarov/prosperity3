@@ -32,6 +32,24 @@ class OrderBook:
         self.bid_prices = [order[0] for order in buy_orders]
         self.bid_volumes = [order[1] for order in buy_orders]
 
+    def reset_to_previous(self):
+        self.ask_prices = deepcopy(self.previous_ask_prices)
+        self.ask_volumes = deepcopy(self.previous_ask_volumes)
+        self.bid_prices = deepcopy(self.previous_bid_prices)
+        self.bid_volumes = deepcopy(self.previous_bid_volumes)
+
+    def get_best_bid(self):
+        if len(self.bid_prices) == 0:
+            return None
+        else:
+            return self.bid_prices[0], self.bid_volumes[0]
+
+    def get_best_ask(self):
+        if len(self.ask_prices) == 0:
+            return None
+        else:
+            return self.ask_prices[0], self.ask_volumes[0]
+
     def get_ask_order_at_depth(self, depth):
         assert depth < self.ask_orders_depth and depth >= 0
 
@@ -103,12 +121,14 @@ class OrderBook:
             bid_price_at_max_volume = self.bid_prices[max_bid_volume_index]
             return ask_price_at_max_volume - bid_price_at_max_volume
 
-    @property
-    def mm_fair_price(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+    def get_mm_fair(self, adverse_volume):
+        if self.ask_orders_depth == 0 or self.bid_orders_depth == 0:
             return None
         else:
-            if max(self.ask_volumes) > 10 and max(self.bid_volumes) > 10:
+            if (
+                max(self.ask_volumes) >= adverse_volume
+                and max(self.bid_volumes) >= adverse_volume
+            ):
                 max_ask_volume_index = self.ask_volumes.index(max(self.ask_volumes))
                 max_bid_volume_index = self.bid_volumes.index(max(self.bid_volumes))
                 ask_price_at_max_volume = self.ask_prices[max_ask_volume_index]
@@ -145,6 +165,63 @@ class OrderBook:
             delta_ask = total_ask_volume - total_ask_volume_prev
 
             return delta_bid - delta_ask
+
+    def update(self, order):
+        if order.quantity > 0:  # Buy order
+            if order.price in self.ask_prices:
+                index = self.ask_prices.index(order.price)
+                if self.ask_volumes[index] > order.quantity:
+                    self.ask_volumes[index] -= order.quantity
+                elif self.ask_volumes[index] < order.quantity:
+                    volumes = deepcopy(self.ask_volumes)
+                    self.bid_volumes.append(order.quantity - volumes[index])
+                    self.bid_prices.append(order.price)
+                    self.ask_prices.pop(index)
+                    self.ask_volumes.pop(index)
+                else:
+                    self.ask_prices.pop(index)
+                    self.ask_volumes.pop(index)
+            else:
+                if order.price in self.bid_prices:
+                    index = self.bid_prices.index(order.price)
+                    self.bid_volumes[index] += order.quantity
+                else:
+                    self.bid_prices.append(order.price)
+                    self.bid_volumes.append(order.quantity)
+        else:  # Sell order
+            if order.price in self.bid_prices:
+                index = self.bid_prices.index(order.price)
+                if self.bid_volumes[index] > abs(order.quantity):
+                    self.bid_volumes[index] -= abs(order.quantity)
+                elif self.bid_volumes[index] < abs(order.quantity):
+                    volumes = deepcopy(self.bid_volumes)
+                    self.ask_volumes.append(abs(order.quantity) - volumes[index])
+                    self.ask_prices.append(order.price)
+                    self.bid_prices.pop(index)
+                    self.bid_volumes.pop(index)
+                else:
+                    self.bid_prices.pop(index)
+                    self.bid_volumes.pop(index)
+            else:
+                if order.price in self.ask_prices:
+                    index = self.ask_prices.index(order.price)
+                    self.ask_volumes[index] += abs(order.quantity)
+                else:
+                    self.ask_prices.append(order.price)
+                    self.ask_volumes.append(abs(order.quantity))
+
+        # Sort the order book by price
+        self.sell_orders = sorted(
+            zip(self.ask_prices, self.ask_volumes), key=lambda x: x[0]
+        )
+        self.buy_orders = sorted(
+            zip(self.bid_prices, self.bid_volumes), key=lambda x: x[0], reverse=True
+        )
+
+        self.ask_prices = [order[0] for order in self.sell_orders]
+        self.ask_volumes = [order[1] for order in self.sell_orders]
+        self.bid_prices = [order[0] for order in self.buy_orders]
+        self.bid_volumes = [order[1] for order in self.buy_orders]
 
     def __repr__(self):
         repr_str = "BID ORDER PRICE | VOLUME | ASK ORDER PRICE\n"
@@ -190,60 +267,3 @@ class OrderBook:
         lines.append(f"Order Book Imbalance: {imbalance:.2f}\n")
 
         return "".join(lines)
-
-    def update(self, order):
-        if order.quantity > 0:  # Buy order
-            if order.price in self.ask_prices:
-                index = self.ask_prices.index(order.price)
-                if self.ask_volumes[index] > order.quantity:
-                    self.ask_volumes[index] -= order.quantity
-                elif self.ask_volumes[index] < order.quantity:
-                    self.ask_prices.pop(index)
-                    self.ask_volumes.pop(index)
-                    self.bid_volumes.append(order.quantity - self.ask_volumes[index])
-                    self.bid_prices.append(order.price)
-                else:
-                    self.ask_prices.pop(index)
-                    self.ask_volumes.pop(index)
-            else:
-                if order.price in self.bid_prices:
-                    index = self.bid_prices.index(order.price)
-                    self.bid_volumes[index] += order.quantity
-                else:
-                    self.bid_prices.append(order.price)
-                    self.bid_volumes.append(order.quantity)
-        else:  # Sell order
-            if order.price in self.bid_prices:
-                index = self.bid_prices.index(order.price)
-                if self.bid_volumes[index] > abs(order.quantity):
-                    self.bid_volumes[index] -= abs(order.quantity)
-                elif self.bid_volumes[index] < abs(order.quantity):
-                    self.bid_prices.pop(index)
-                    self.bid_volumes.pop(index)
-                    self.ask_volumes.append(
-                        abs(order.quantity) - self.bid_volumes[index]
-                    )
-                    self.ask_prices.append(order.price)
-                else:
-                    self.bid_prices.pop(index)
-                    self.bid_volumes.pop(index)
-            else:
-                if order.price in self.ask_prices:
-                    index = self.ask_prices.index(order.price)
-                    self.ask_volumes[index] += abs(order.quantity)
-                else:
-                    self.ask_prices.append(order.price)
-                    self.ask_volumes.append(abs(order.quantity))
-
-        # Sort the order book by price
-        self.sell_orders = sorted(
-            zip(self.ask_prices, self.ask_volumes), key=lambda x: x[0]
-        )
-        self.buy_orders = sorted(
-            zip(self.bid_prices, self.bid_volumes), key=lambda x: x[0], reverse=True
-        )
-
-        self.ask_prices = [order[0] for order in self.sell_orders]
-        self.ask_volumes = [order[1] for order in self.sell_orders]
-        self.bid_prices = [order[0] for order in self.buy_orders]
-        self.bid_volumes = [order[1] for order in self.buy_orders]
