@@ -4,6 +4,19 @@ from io import StringIO
 import pandas as pd
 
 
+def from_csv(round, day, dir="data"):
+    activities_file = f"{dir}/round{round}/p{round}{day}.csv"
+    activities = pd.read_csv(activities_file, sep=";")
+
+    if round == 0:  # No trades info for the tutorial round
+        trades = []
+    else:
+        trades_file = f"{dir}/round{round}/t{round}{day}.csv"
+        trades = pd.read_csv(trades_file, sep=";")
+
+    return activities, trades
+
+
 def is_integer(string):
     if string.startswith("-"):
         return string[1:].isdigit()

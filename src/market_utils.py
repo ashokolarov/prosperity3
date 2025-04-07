@@ -110,33 +110,35 @@ class OrderBook:
 
             return vwap
 
-    @property
-    def mm_spread(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
-            return None
-        else:
-            max_ask_volume_index = self.ask_volumes.index(max(self.ask_volumes))
-            max_bid_volume_index = self.bid_volumes.index(max(self.bid_volumes))
-            ask_price_at_max_volume = self.ask_prices[max_ask_volume_index]
-            bid_price_at_max_volume = self.bid_prices[max_bid_volume_index]
-            return ask_price_at_max_volume - bid_price_at_max_volume
-
     def get_mm_fair(self, adverse_volume):
-        if self.ask_orders_depth == 0 or self.bid_orders_depth == 0:
+        if (
+            self.ask_orders_depth == 0
+            or self.bid_orders_depth == 0
+            or max(self.ask_volumes) < adverse_volume
+            or max(self.bid_volumes) < adverse_volume
+        ):
             return None
         else:
-            if (
-                max(self.ask_volumes) >= adverse_volume
-                and max(self.bid_volumes) >= adverse_volume
-            ):
-                max_ask_volume_index = self.ask_volumes.index(max(self.ask_volumes))
-                max_bid_volume_index = self.bid_volumes.index(max(self.bid_volumes))
-                ask_price_at_max_volume = self.ask_prices[max_ask_volume_index]
-                bid_price_at_max_volume = self.bid_prices[max_bid_volume_index]
-                fair_price = (ask_price_at_max_volume + bid_price_at_max_volume) / 2
-                return fair_price
-            else:
+            filtered_ask = [
+                self.ask_prices[idx]
+                for idx in range(self.ask_orders_depth)
+                if self.ask_volumes[idx] >= adverse_volume
+            ]
+
+            filtered_bid = [
+                self.bid_prices[idx]
+                for idx in range(self.bid_orders_depth)
+                if self.bid_volumes[idx] >= adverse_volume
+            ]
+
+            mm_ask = min(filtered_ask) if len(filtered_ask) > 0 else None
+            mm_bid = max(filtered_bid) if len(filtered_bid) > 0 else None
+
+            if mm_ask is None or mm_bid is None:
                 return None
+
+            fair_price = (mm_ask + mm_bid) / 2
+            return fair_price
 
     @property
     def imbalance(self):

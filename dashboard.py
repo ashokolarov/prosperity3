@@ -5,21 +5,27 @@ import dash
 import plotly.graph_objects as go
 from dash import Input, Output
 
-from development.log_processing import process_log
+from development.log_processing import from_csv, process_log
 from development.visualizer.layout import get_layout
 
 
-def get_visualizer(file_path):
+def get_visualizer(log_file=None, round=None, day=None):
     # Extract the lines
-    trader_data, products_data, activities, trades = process_log(file_path)
+    if log_file is not None:
+        trader_data, products_data, activities, trades = process_log(log_file)
+        file_name = os.path.basename(log_file)
+    else:
+        activities, trades = from_csv(round, day)
+        trader_data = None
+        products_data = None
+        file_name = f"round{round}_day{day}.csv"
 
-    products = list(products_data.keys())
+    products = activities["product"].unique()
     timestamps = sorted(activities["timestamp"].unique())
 
     # Initialize Dash app
     app = dash.Dash(__name__)
 
-    file_name = os.path.basename(file_path)
     app.layout = get_layout(products, timestamps, file_name)
 
     @app.callback(
@@ -65,73 +71,74 @@ def get_visualizer(file_path):
     )
     def update_graphs(selected_product, timestamp_value):
         # Filter data for the selected product
-        product_data = products_data[selected_product].reset_index()
-        activity = activities[activities["product"] == selected_product].reset_index()
-        trade = trades[trades["symbol"] == selected_product].reset_index()
+        if products_data is not None:
+            if selected_product in products_data.keys():
+                product_data = products_data[selected_product].reset_index()
+            else:
+                product_data = None
+        else:
+            product_data = None
 
-        t_idx_prod = product_data[product_data["timestamp"] == timestamp_value].index[0]
+        trade = trades[trades["symbol"] == selected_product].reset_index()
+        activity = activities[activities["product"] == selected_product].reset_index()
+
+        if product_data is not None:
+            t_idx_prod = product_data[
+                product_data["timestamp"] == timestamp_value
+            ].index[0]
         t_idx_act = activity[activity["timestamp"] == timestamp_value].index[0]
 
         # Position Chart
         position_fig = go.Figure()
-        position_fig.add_trace(
-            go.Scatter(
-                x=product_data["timestamp"],
-                y=product_data["position"],
-                mode="lines",
-                name="Position",
-                line=dict(color="green", width=4),
-                hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
-            )
-        )
-        if "mt_position" in product_data.columns:
+        if product_data is not None:
             position_fig.add_trace(
                 go.Scatter(
                     x=product_data["timestamp"],
-                    y=product_data["mt_position"],
+                    y=product_data["position"],
                     mode="lines",
-                    name="MT Position",
-                    line=dict(color="red", dash="dot", width=2),
-                    hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
-                )
-            )
-        if "mm_position" in product_data.columns:
-            position_fig.add_trace(
-                go.Scatter(
-                    x=product_data["timestamp"],
-                    y=product_data["mm_position"],
-                    mode="lines",
-                    name="MM Position",
-                    line=dict(color="blue", dash="dot", width=2),
+                    name="Position",
+                    line=dict(color="green", width=4),
                     hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
                 )
             )
 
-        # Add a horizontal line at y=0
-        position_fig.add_shape(
-            type="line",
-            x0=min(product_data["timestamp"]),
-            y0=50,
-            x1=max(product_data["timestamp"]),
-            y1=50,
-            line=dict(
-                color="gray",
-                width=3,
-                dash="dash",
-            ),
-        )
-        position_fig.add_shape(
-            type="line",
-            x0=min(product_data["timestamp"]),
-            y0=-50,
-            x1=max(product_data["timestamp"]),
-            y1=-50,
-            line=dict(
-                color="gray",
-                width=3,
-                dash="dash",
-            ),
-        )
+            # Add a horizontal line at y=0
+            position_fig.add_shape(
+                type="line",
+                x0=min(product_data["timestamp"]),
+                y0=50,
+                x1=max(product_data["timestamp"]),
+                y1=50,
+                line=dict(
+                    color="gray",
+                    width=3,
+                    dash="dash",
+                ),
+            )
+            position_fig.add_shape(
+                type="line",
+                x0=min(product_data["timestamp"]),
+                y0=-50,
+                x1=max(product_data["timestamp"]),
+                y1=-50,
+                line=dict(
+                    color="gray",
+                    width=3,
+                    dash="dash",
+                ),
+            )
+        else:
+            position_fig.add_trace(
+                go.Scatter(
+                    x=activity["timestamp"],
+                    y=[0 for i in range(len(activity))],
+                    mode="lines",
+                    name="Position",
+                    line=dict(color="green", width=4),
+                    hovertemplate="Timestamp: %{x:,.0f}<br>Position: %{y}<extra></extra>",
+                )
+            )
+
         position_fig.update_layout(
             title="Position Over Time",
             xaxis_title="Timestamp",
@@ -255,29 +262,31 @@ def get_visualizer(file_path):
                 )
 
         order_stats_data = []
-        if not activity.empty:
-            names = ["mid_price", "vwap", "fair_price", "volatility"]
-            for name in names:
-                if name in product_data.columns:
-                    order_stats_data.append(
-                        {
-                            "Name": name,
-                            "Value": product_data[name].iloc[t_idx_prod],
-                        }
-                    )
+        if product_data is not None:
+            if not activity.empty:
+                names = ["mid_price", "vwap", "fair_price", "volatility"]
+                for name in names:
+                    if name in product_data.columns:
+                        order_stats_data.append(
+                            {
+                                "Name": name,
+                                "Value": product_data[name].iloc[t_idx_prod],
+                            }
+                        )
 
         # Orders Table
         orders_data = []
-        if not activity.empty:
-            orders = product_data["orders"].iloc[t_idx_prod]
-            for order in orders:
-                orders_data.append(
-                    {
-                        "Type": "Buy" if order[0] > 0 else "Sell",
-                        "Quantity": order[0],
-                        "Price": order[1],
-                    }
-                )
+        if product_data is not None:
+            if not activity.empty:
+                orders = product_data["orders"].iloc[t_idx_prod]
+                for order in orders:
+                    orders_data.append(
+                        {
+                            "Type": "Buy" if order[0] > 0 else "Sell",
+                            "Quantity": order[0],
+                            "Price": order[1],
+                        }
+                    )
 
         # Trades Table
         trades_data = []
@@ -295,29 +304,30 @@ def get_visualizer(file_path):
 
         # Positions Table
         position_data = []
-        if not product_data.empty:
-            position_data.append(
-                {
-                    "Position_Type": "Position",
-                    "Value": product_data["position"].iloc[t_idx_prod],
-                }
-            )
-            position_data.append(
-                {
-                    "Position_Type": "MT Position",
-                    "Value": product_data["mt_position"].iloc[t_idx_prod]
-                    if "mt_position" in product_data.columns
-                    else 0,
-                }
-            )
-            position_data.append(
-                {
-                    "Position_Type": "MM Position",
-                    "Value": product_data["mm_position"].iloc[t_idx_prod]
-                    if "mm_position" in product_data.columns
-                    else 0,
-                }
-            )
+        if product_data is not None:
+            if not product_data.empty:
+                position_data.append(
+                    {
+                        "Position_Type": "Position",
+                        "Value": product_data["position"].iloc[t_idx_prod],
+                    }
+                )
+                position_data.append(
+                    {
+                        "Position_Type": "MT Position",
+                        "Value": product_data["mt_position"].iloc[t_idx_prod]
+                        if "mt_position" in product_data.columns
+                        else 0,
+                    }
+                )
+                position_data.append(
+                    {
+                        "Position_Type": "MM Position",
+                        "Value": product_data["mm_position"].iloc[t_idx_prod]
+                        if "mm_position" in product_data.columns
+                        else 0,
+                    }
+                )
 
         return (
             position_fig,
@@ -339,11 +349,18 @@ def parse_args():
         description="Visualize trading data from a log file."
     )
     parser.add_argument(
-        "log_file",
-        nargs="?",
-        default="backtests/prosperity.log",
+        "--log_file",
         help="Path to the log file to visualize (default: backtests/prosperity.log)",
     )
+    parser.add_argument(
+        "--round",
+        type=int,
+    )
+    parser.add_argument(
+        "--day",
+        type=int,
+    )
+
     parser.add_argument(
         "--port",
         type=int,
@@ -358,7 +375,15 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    app = get_visualizer(args.log_file)
+
+    if args.log_file is None:
+        if args.round is None and args.day is None:
+            raise ("Please provide a log file or specify a round and day.")
+        else:
+            print(args.round, args.day)
+            app = get_visualizer(round=args.round, day=args.day)
+    else:
+        app = get_visualizer(log_file=args.log_file)
 
     debug_mode = args.debug
     port = args.port

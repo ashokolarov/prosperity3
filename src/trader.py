@@ -26,14 +26,11 @@ config_rainforest = {
 config_kelp = {
     # General
     "update_order_book": True,
-    "price_window": 10,
-    "adverse_volume": 10,  # Market taking parameters
-    "n_points": 3,
-    "p_degree": 1,
+    "adverse_volume": 15,  # Market taking parameters
     # Market taking parameters
     "mt_take_width": 1,
     "mt_clear_width": 0,
-    "mt_reversion_beta": -0.14,
+    "mt_reversion_beta": -0.23,
     # Market making parameters
     "mm_default_vol": 15,
     "mm_disregard_edge": 2,
@@ -54,8 +51,8 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
-            # products["KELP"] = Kelp(config_kelp)
+            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["KELP"] = Kelp(config_kelp)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
