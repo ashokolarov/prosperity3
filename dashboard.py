@@ -9,16 +9,16 @@ from development.log_processing import from_csv, process_log
 from development.visualizer.layout import get_layout
 
 
-def get_visualizer(log_file=None, round=None, day=None):
+def get_visualizer(log_file=None, prosperity_round=None, day=None):
     # Extract the lines
     if log_file is not None:
         trader_data, products_data, activities, trades = process_log(log_file)
         file_name = os.path.basename(log_file)
     else:
-        activities, trades = from_csv(round, day)
+        activities, trades = from_csv(prosperity_round, day)
         trader_data = None
         products_data = None
-        file_name = f"round{round}_day{day}.csv"
+        file_name = f"round{prosperity_round}_day{day}.csv"
 
     products = activities["product"].unique()
     timestamps = sorted(activities["timestamp"].unique())
@@ -264,7 +264,7 @@ def get_visualizer(log_file=None, round=None, day=None):
         order_stats_data = []
         if product_data is not None:
             if not activity.empty:
-                names = ["mid_price", "vwap", "fair_price", "volatility"]
+                names = ["mid_price", "vwap", "fair_value", "volatility", "mm_price"]
                 for name in names:
                     if name in product_data.columns:
                         order_stats_data.append(

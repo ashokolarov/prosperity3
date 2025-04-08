@@ -550,37 +550,31 @@ class Kelp(Product):
         self.order_book = OrderBook()
 
         # Price estimation
-        self.adverse_volume = config.get("adverse_volume")
+        self.detect_mm_volume = config.get("detect_mm_volume")
         self.last_fair_price = None
 
         # Market taking parameters
         self.mt_take_width = config.get("mt_take_width")
         self.mt_clear_width = config.get("mt_clear_width")
-        self.mt_prevent_adverse = config.get("mt_prevent_adverse")
+        self.mt_adverse_volume = config.get("mt_adverse_volume")
         self.mt_reversion_beta = config.get("mt_reversion_beta")
 
         # Market making parameters
         self.mm_disregard_edge = config.get("mm_disregard_edge")
         self.mm_default_vol = config.get("mm_default_vol")
 
-    def estimate_fair_value_kalman(self):
+    def estimate_fair_value_kalman(self, observed_price):
         # Initialize Kalman filter state if not exists
         if not hasattr(self, "kf_price"):
             self.kf_price = None  # Estimated state
             self.kf_variance = 1.0  # Uncertainty in the estimate
-            self.process_variance = 0.01  # How quickly the true price changes
-            self.measurement_variance = 0.35  # Noise in price observations
+            self.process_variance = 0.1  # How quickly the true price changes
+            self.measurement_variance = 0.1  # Noise in price observations
 
         if (
             len(self.order_book.ask_prices) != 0
             and len(self.order_book.bid_prices) != 0
         ):
-            # Get current observation
-            observed_price = self.order_book.get_mm_fair(self.adverse_volume)
-
-            if observed_price is None:
-                observed_price = self.last_fair_price or self.order_book.mid_price
-
             # Kalman filter prediction step
             if self.kf_price is None:
                 self.kf_price = observed_price
@@ -602,40 +596,13 @@ class Kelp(Product):
 
         return None
 
-    def estimate_fair_value(self):
-        if (
-            len(self.order_book.ask_prices) != 0
-            and len(self.order_book.bid_prices) != 0
-        ):
-            mmmid_price = self.order_book.get_mm_fair(self.adverse_volume)
-
-            if mmmid_price is None:
-                if self.last_fair_price is None:
-                    mmmid_price = self.order_book.vwap
-                else:
-                    mmmid_price = self.last_fair_price
-
-            self.logger.print_numeric("mmmid_price", mmmid_price)
-
-            if self.last_fair_price is not None:
-                last_price = self.last_fair_price
-                last_returns = (mmmid_price - last_price) / last_price
-                reversion_beta = self.mt_reversion_beta
-                pred_returns = last_returns * reversion_beta
-                fair = mmmid_price + (mmmid_price * pred_returns)
-            else:
-                fair = mmmid_price
-            self.last_fair_price = fair
-            return fair
-        return None
-
     def market_take(self, fair_value, position, remaining_buy, remaining_sell):
         orders = []
 
         # Check if there is an opportunity to market take in ask orders
         for depth_level in range(self.order_book.ask_orders_depth):
             ask_price, ask_volume = self.order_book.get_ask_order_at_depth(depth_level)
-            if ask_volume <= self.adverse_volume:
+            if ask_volume <= self.mt_adverse_volume:
                 if fair_value - ask_price >= self.mt_take_width:
                     bid_price = ask_price
                     bid_volume = min(remaining_buy, ask_volume)
@@ -650,7 +617,7 @@ class Kelp(Product):
         # Check if there is an opportunity to market take in bid orders
         for depth_level in range(self.order_book.bid_orders_depth):
             bid_price, bid_volume = self.order_book.get_bid_order_at_depth(depth_level)
-            if ask_volume <= self.adverse_volume:
+            if ask_volume <= self.mt_adverse_volume:
                 if bid_price - fair_value >= self.mt_take_width:
                     ask_price = bid_price
                     ask_volume = min(remaining_sell, bid_volume)
@@ -677,7 +644,7 @@ class Kelp(Product):
                 bid_price, bid_volume = self.order_book.get_bid_order_at_depth(
                     depth_level
                 )
-                if bid_volume <= self.adverse_volume:
+                if bid_volume <= self.mt_adverse_volume:
                     if bid_price - fair_value >= self.mt_clear_width:
                         qty = min(remaining_sell, bid_volume)
                         ask_order = Order(self.symbol, bid_price, -qty)
@@ -696,7 +663,7 @@ class Kelp(Product):
                 ask_price, ask_volume = self.order_book.get_ask_order_at_depth(
                     depth_level
                 )
-                if ask_volume <= self.adverse_volume:
+                if ask_volume <= self.mt_adverse_volume:
                     if fair_value - ask_price >= self.mt_clear_width:
                         qty = min(remaining_buy, ask_volume)
                         bid_order = Order(self.symbol, ask_price, qty)
@@ -751,18 +718,86 @@ class Kelp(Product):
 
         return orders
 
+    def market_make_2(self, fair_value, position, remaining_buy, remaining_sell):
+        orders = []
+
+        disregard_edge = 1
+        default_edge = 1
+        join_edge = 1
+
+        asks_above_fair = [
+            price
+            for price in self.order_book.ask_prices
+            if price > round(fair_value + disregard_edge)
+        ]
+        bids_below_fair = [
+            price
+            for price in self.order_book.bid_prices
+            if price < round(fair_value - disregard_edge)
+        ]
+
+        best_ask_above_fair = min(asks_above_fair) if len(asks_above_fair) > 0 else None
+        best_bid_below_fair = max(bids_below_fair) if len(bids_below_fair) > 0 else None
+
+        ask_price = round(fair_value + default_edge)
+        if best_ask_above_fair is not None:
+            best_ask_idx = self.order_book.ask_prices.index(best_ask_above_fair)
+            best_ask_volume = self.order_book.ask_volumes[best_ask_idx]
+            if abs(best_ask_above_fair - fair_value) <= join_edge:  # best ask volume 1
+                ask_price = best_ask_above_fair
+            else:
+                ask_price = best_ask_above_fair - 1  #
+
+        bid_price = round(fair_value - default_edge)
+        if best_bid_below_fair is not None:
+            best_bid_idx = self.order_book.bid_prices.index(best_bid_below_fair)
+            best_bid_volume = self.order_book.bid_volumes[best_bid_idx]
+            if abs(fair_value - best_bid_below_fair) <= join_edge:  # best bid volume 3
+                bid_price = best_bid_below_fair  # join BEST 0
+            else:
+                bid_price = best_bid_below_fair + 1  # penny
+
+        bid_price = round(bid_price)
+        ask_price = round(ask_price)
+
+        # Scale our order sizes based on how far we are from position limits
+        bid_volume = min(self.mm_default_vol, remaining_buy)
+        ask_volume = min(self.mm_default_vol, remaining_sell)
+
+        # Create the orders if they make sense
+        if bid_volume > 0:
+            bid_order = Order(self.symbol, bid_price, bid_volume)
+            orders.append(bid_order)
+
+        if ask_volume > 0:
+            ask_order = Order(self.symbol, ask_price, -ask_volume)
+            orders.append(ask_order)
+
+        return orders
+
     def calculate_orders(self, order_depths, position, own_trades, timestamp):
         self.print_product_begin(timestamp)
         self.order_book.reset(order_depths)
 
         orders = []
 
-        self.logger.print(f"position {position}")
+        self.logger.print_numeric("position", position)
         remaining_buy = self.pos_limit - position
         remaining_sell = self.pos_limit + position
 
-        fair_value = self.estimate_fair_value_kalman()
-        self.logger.print(f"fair_value {fair_value}")
+        # --------------Price estimation------------------
+        mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
+        self.logger.print_numeric("mm_price", mm_price)
+        vwap = self.order_book.vwap
+        self.logger.print_numeric("vwap", vwap)
+
+        if mm_price is None:
+            current_price = vwap
+        else:
+            current_price = mm_price
+
+        fair_value = self.estimate_fair_value_kalman(current_price)
+        self.logger.print_numeric("fair_value", fair_value)
 
         # ------------------------------------------------
         # Liquidation and market taking
@@ -777,7 +812,9 @@ class Kelp(Product):
         orders += liquidated_orders
         # ------------------------------------------------
         # Market making
-        orders += self.market_make(fair_value, position, remaining_buy, remaining_sell)
+        orders += self.market_make_2(
+            fair_value, position, remaining_buy, remaining_sell
+        )
 
         self.print_orders(orders)
         self.print_product_end()
@@ -805,13 +842,14 @@ config_rainforest = {
 config_kelp = {
     # General
     "update_order_book": True,
-    "adverse_volume": 15,  # Market taking parameters
+    "detect_mm_volume": 15,  # Volume to detect market maker
     # Market taking parameters
     "mt_take_width": 1,
     "mt_clear_width": 0,
+    "mt_adverse_volume": 15,  # Maximum mt volume
     "mt_reversion_beta": -0.23,
     # Market making parameters
-    "mm_default_vol": 15,
+    "mm_default_vol": 20,
     "mm_disregard_edge": 2,
 }
 
@@ -830,7 +868,7 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
         else:
             traderData = jsonpickle.decode(state.traderData)

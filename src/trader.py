@@ -3,7 +3,7 @@ from time import time
 import jsonpickle
 
 from datamodel import TradingState
-from products import Kelp, RainforestResin
+from products import Kelp, RainforestResin, Squid
 from utils import CustomLogger
 
 config_rainforest = {
@@ -26,14 +26,19 @@ config_rainforest = {
 config_kelp = {
     # General
     "update_order_book": True,
-    "adverse_volume": 15,  # Market taking parameters
+    "detect_mm_volume": 15,  # Volume to detect market maker
     # Market taking parameters
     "mt_take_width": 1,
     "mt_clear_width": 0,
+    "mt_adverse_volume": 15,  # Maximum mt volume
     "mt_reversion_beta": -0.23,
     # Market making parameters
-    "mm_default_vol": 15,
+    "mm_default_vol": 20,
     "mm_disregard_edge": 2,
+}
+
+config_squid = {
+    "update_order_book": True,
 }
 
 
@@ -51,8 +56,9 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
+            products["SQUID_INK"] = Squid(config_squid)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
