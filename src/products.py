@@ -272,13 +272,19 @@ class Kelp(Product):
         self.mt_take_width = config.get("mt_take_width")
         self.mt_clear_width = config.get("mt_clear_width")
         self.mt_adverse_volume = config.get("mt_adverse_volume")
-        self.mt_reversion_beta = config.get("mt_reversion_beta")
 
         # Market making parameters
         self.mm_disregard_edge = config.get("mm_disregard_edge")
         self.mm_default_vol = config.get("mm_default_vol")
 
-    def estimate_fair_value_kalman(self, observed_price):
+        # Directional trading parameters
+        self.dt_default_vol = config.get("dt_default_vol")
+        self.dt_long_size = config.get("dt_long_size")
+        self.dt_short_size = config.get("dt_short_size")
+        self.dt_long_history = deque(maxlen=self.dt_long_size)
+        self.dt_short_history = deque(maxlen=self.dt_short_size)
+
+    def estimate_fair_value(self, observed_price):
         # Initialize Kalman filter state if not exists
         if not hasattr(self, "kf_price"):
             self.kf_price = None  # Estimated state
@@ -520,6 +526,14 @@ class Kelp(Product):
 
         return orders
 
+    def directional_trade(self, remaining_buy, remaining_sell):
+        orders = []
+
+        if (len(self.dt_short_history) < self.dt_short_size) or (
+            len(self.dt_long_history) < self.dt_long_size
+        ):
+            return []
+
     def calculate_orders(self, order_depths, position, own_trades, timestamp):
         self.print_product_begin(timestamp)
         self.order_book.reset(order_depths)
@@ -550,7 +564,7 @@ class Kelp(Product):
         else:
             current_price = mm_price
 
-        fair_value = self.estimate_fair_value_kalman(current_price)
+        fair_value = self.estimate_fair_value(current_price)
         self.logger.print_numeric("fair_value", fair_value)
 
         # ------------------------------------------------
