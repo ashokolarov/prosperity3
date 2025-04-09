@@ -110,7 +110,7 @@ class RainforestResin(Product):
                     depth_level
                 )
                 if bid_price - fair_value >= self.mt_long_profit_margin:
-                    qty = min(remaining_sell, bid_volume)
+                    qty = min(remaining_sell, bid_volume, position)
                     ask_order = Order(self.symbol, bid_price, -qty)
                     orders.append(ask_order)
                     # update positions and remaining buy/sell volumes
@@ -128,7 +128,7 @@ class RainforestResin(Product):
                     depth_level
                 )
                 if fair_value - ask_price >= self.mt_short_profit_margin:
-                    qty = min(remaining_buy, ask_volume)
+                    qty = min(remaining_buy, ask_volume, abs(position))
                     bid_order = Order(self.symbol, ask_price, qty)
                     orders.append(bid_order)
                     # update positions and remaining buy/sell volumes
@@ -361,7 +361,7 @@ class Kelp(Product):
                 )
                 if bid_volume <= self.mt_adverse_volume:
                     if bid_price - fair_value >= self.mt_clear_width:
-                        qty = min(remaining_sell, bid_volume)
+                        qty = min(remaining_sell, bid_volume, position)
                         ask_order = Order(self.symbol, bid_price, -qty)
                         orders.append(ask_order)
                         # update positions and remaining buy/sell volumes
@@ -380,7 +380,7 @@ class Kelp(Product):
                 )
                 if ask_volume <= self.mt_adverse_volume:
                     if fair_value - ask_price >= self.mt_clear_width:
-                        qty = min(remaining_buy, ask_volume)
+                        qty = min(remaining_buy, ask_volume, abs(position))
                         bid_order = Order(self.symbol, ask_price, qty)
                         orders.append(bid_order)
                         # update positions and remaining buy/sell volumes
@@ -490,6 +490,36 @@ class Kelp(Product):
 
         return orders
 
+    def market_make_3(self, fair_value, position, remaining_buy, remaining_sell):
+        orders = []
+
+        mm_package = self.order_book.get_mm_fair(
+            self.detect_mm_volume, with_spread=True
+        )
+        if mm_package is None:
+            return orders
+        else:
+            mm_price = mm_package[0]
+            mm_spread = mm_package[1]
+
+        bid_price = round(mm_price - mm_spread / 2 + 1)
+        ask_price = round(mm_price + mm_spread / 2 - 1)
+
+        # Scale our order sizes based on how far we are from position limits
+        bid_volume = min(self.mm_default_vol, remaining_buy)
+        ask_volume = min(self.mm_default_vol, remaining_sell)
+
+        # Create the orders if they make sense
+        if bid_volume > 0:
+            bid_order = Order(self.symbol, bid_price, bid_volume)
+            orders.append(bid_order)
+
+        if ask_volume > 0:
+            ask_order = Order(self.symbol, ask_price, -ask_volume)
+            orders.append(ask_order)
+
+        return orders
+
     def calculate_orders(self, order_depths, position, own_trades, timestamp):
         self.print_product_begin(timestamp)
         self.order_book.reset(order_depths)
@@ -501,8 +531,17 @@ class Kelp(Product):
         remaining_sell = self.pos_limit + position
 
         # --------------Price estimation------------------
-        mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
+        mm_package = self.order_book.get_mm_fair(
+            self.detect_mm_volume, with_spread=True
+        )
+        if mm_package is None:
+            mm_price = None
+            mm_spread = None
+        else:
+            mm_price = mm_package[0]
+            mm_spread = mm_package[1]
         self.logger.print_numeric("mm_price", mm_price)
+        self.logger.print_numeric("mm_spread", mm_spread)
         vwap = self.order_book.vwap
         self.logger.print_numeric("vwap", vwap)
 
@@ -527,7 +566,7 @@ class Kelp(Product):
         orders += liquidated_orders
         # ------------------------------------------------
         # Market making
-        orders += self.market_make_2(
+        orders += self.market_make_3(
             fair_value, position, remaining_buy, remaining_sell
         )
 

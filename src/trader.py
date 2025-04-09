@@ -56,9 +56,9 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
-            products["SQUID_INK"] = Squid(config_squid)
+            # products["SQUID_INK"] = Squid(config_squid)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]

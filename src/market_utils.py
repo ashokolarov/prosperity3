@@ -110,7 +110,7 @@ class OrderBook:
 
             return vwap
 
-    def get_mm_fair(self, adverse_volume):
+    def get_mm_fair(self, adverse_volume, with_spread=False):
         if (
             self.ask_orders_depth == 0
             or self.bid_orders_depth == 0
@@ -138,7 +138,12 @@ class OrderBook:
                 return None
 
             fair_price = (mm_ask + mm_bid) / 2
-            return fair_price
+            spread = mm_ask - mm_bid
+
+            if with_spread:
+                return fair_price, spread
+            else:
+                return fair_price
 
     @property
     def imbalance(self):

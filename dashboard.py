@@ -264,7 +264,14 @@ def get_visualizer(log_file=None, prosperity_round=None, day=None):
         order_stats_data = []
         if product_data is not None:
             if not activity.empty:
-                names = ["mid_price", "vwap", "fair_value", "volatility", "mm_price"]
+                names = [
+                    "mid_price",
+                    "vwap",
+                    "fair_value",
+                    "volatility",
+                    "mm_price",
+                    "mm_spread",
+                ]
                 for name in names:
                     if name in product_data.columns:
                         order_stats_data.append(
