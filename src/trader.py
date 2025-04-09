@@ -31,7 +31,6 @@ config_kelp = {
     "mt_take_width": 1,
     "mt_clear_width": 0,
     "mt_adverse_volume": 15,  # Maximum mt volume
-    "mt_reversion_beta": -0.23,
     # Market making parameters
     "mm_default_vol": 20,
     "mm_disregard_edge": 2,
