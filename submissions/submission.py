@@ -12,13 +12,13 @@ from datamodel import Order
 
 from datamodel import TradingState
 
+from math import ceil, floor
+
 from time import time
 
 from typing import Any
 
 import jsonpickle
-
-import numpy as np
 
 
 
@@ -153,8 +153,8 @@ class OrderBook:
                 if self.bid_volumes[idx] >= adverse_volume
             ]
 
-            mm_ask = min(filtered_ask) if len(filtered_ask) > 0 else None
-            mm_bid = max(filtered_bid) if len(filtered_bid) > 0 else None
+            mm_ask = max(filtered_ask) if len(filtered_ask) > 0 else None
+            mm_bid = min(filtered_bid) if len(filtered_bid) > 0 else None
 
             if mm_ask is None or mm_bid is None:
                 return None
@@ -489,7 +489,6 @@ class RainforestResin(Product):
         bid_price = round(bid_price)
         ask_price = round(ask_price)
 
-        # Scale our order sizes based on how far we are from position limits
         bid_volume = min(self.mm_default_vol, remaining_buy)
         ask_volume = min(self.mm_default_vol, remaining_sell)
 
@@ -556,19 +555,26 @@ class Kelp(Product):
 
         # Price estimation
         self.detect_mm_volume = config.get("detect_mm_volume")
+        self.last_mm_price = None
         self.last_fair_price = None
 
         # Market taking parameters
         self.mt_take_width = config.get("mt_take_width")
         self.mt_clear_width = config.get("mt_clear_width")
         self.mt_adverse_volume = config.get("mt_adverse_volume")
-        self.mt_reversion_beta = config.get("mt_reversion_beta")
 
         # Market making parameters
         self.mm_disregard_edge = config.get("mm_disregard_edge")
         self.mm_default_vol = config.get("mm_default_vol")
 
-    def estimate_fair_value_kalman(self, observed_price):
+        # Directional trading parameters
+        self.dt_default_vol = config.get("dt_default_vol")
+        self.dt_long_size = config.get("dt_long_size")
+        self.dt_short_size = config.get("dt_short_size")
+        self.dt_long_history = deque(maxlen=self.dt_long_size)
+        self.dt_short_history = deque(maxlen=self.dt_short_size)
+
+    def estimate_fair_value(self, observed_price):
         # Initialize Kalman filter state if not exists
         if not hasattr(self, "kf_price"):
             self.kf_price = None  # Estimated state
@@ -600,6 +606,79 @@ class Kelp(Product):
             return fair
 
         return None
+
+    def market_make_2(self, fair_value, position, remaining_buy, remaining_sell):
+        orders = []
+
+        disregard_edge = 1
+        default_edge = 1
+        join_edge = 0
+        join_edge_2 = 0
+
+        asks_above_fair = [
+            price
+            for price in self.order_book.ask_prices
+            if price > fair_value + disregard_edge
+        ]
+        bids_below_fair = [
+            price
+            for price in self.order_book.bid_prices
+            if price < fair_value - disregard_edge
+        ]
+
+        best_ask_above_fair = min(asks_above_fair) if len(asks_above_fair) > 0 else None
+        best_bid_below_fair = max(bids_below_fair) if len(bids_below_fair) > 0 else None
+
+        ask = round(fair_value + default_edge)
+        if best_ask_above_fair is not None:
+            baaf_idx = self.order_book.ask_prices.index(best_ask_above_fair)
+            best_ask_volume = self.order_book.ask_volumes[baaf_idx]
+            if (
+                abs(best_ask_above_fair - fair_value) <= join_edge
+                and best_ask_volume <= 3
+            ):
+                ask = best_ask_above_fair
+            elif (
+                abs(best_ask_above_fair - fair_value) <= join_edge_2
+                and best_ask_volume <= 1
+            ):
+                ask = best_ask_above_fair
+            else:
+                ask = best_ask_above_fair - 1
+
+        bid = round(fair_value - default_edge)
+        if best_bid_below_fair is not None:
+            bbbf_idx = self.order_book.bid_prices.index(best_bid_below_fair)
+            best_bid_volume = self.order_book.bid_volumes[bbbf_idx]
+            if (
+                abs(fair_value - best_bid_below_fair) <= join_edge
+                and best_bid_volume <= 3
+            ):
+                bid = best_bid_below_fair
+            elif (
+                abs(fair_value - best_bid_below_fair) <= join_edge_2
+                and best_bid_volume <= 1
+            ):
+                bid = best_bid_below_fair
+            else:
+                bid = best_bid_below_fair + 1
+
+        bid_price = round(bid)
+        ask_price = round(ask)
+
+        bid_volume = min(self.mm_default_vol, remaining_buy)
+        ask_volume = min(self.mm_default_vol, remaining_sell)
+
+        # Create the orders if they make sense
+        if bid_volume > 0:
+            bid_order = Order(self.symbol, bid_price, bid_volume)
+            orders.append(bid_order)
+
+        if ask_volume > 0:
+            ask_order = Order(self.symbol, ask_price, -ask_volume)
+            orders.append(ask_order)
+
+        return orders
 
     def market_take(self, fair_value, position, remaining_buy, remaining_sell):
         orders = []
@@ -689,111 +768,37 @@ class Kelp(Product):
 
     def market_make(self, fair_value, position, remaining_buy, remaining_sell):
         orders = []
-        aaf = [
-            price
-            for price in self.order_book.ask_prices
-            if price >= round(fair_value + self.mm_disregard_edge)
-        ]
-        bbf = [
-            price
-            for price in self.order_book.bid_prices
-            if price <= round(fair_value - self.mm_disregard_edge)
-        ]
-        baaf = min(aaf) if len(aaf) > 0 else round(fair_value + self.mm_disregard_edge)
-        bbbf = max(bbf) if len(bbf) > 0 else round(fair_value - self.mm_disregard_edge)
 
-        bid_price = bbbf + 1
-        ask_price = baaf - 1
-
-        bid_price = round(bid_price)
-        ask_price = round(ask_price)
-
-        # Scale our order sizes based on how far we are from position limits
-        bid_volume = min(self.mm_default_vol, remaining_buy)
-        ask_volume = min(self.mm_default_vol, remaining_sell)
-
-        # Create the orders if they make sense
-        if bid_volume > 0:
-            bid_order = Order(self.symbol, bid_price, bid_volume)
-            orders.append(bid_order)
-
-        if ask_volume > 0:
-            ask_order = Order(self.symbol, ask_price, -ask_volume)
-            orders.append(ask_order)
-
-        return orders
-
-    def market_make_2(self, fair_value, position, remaining_buy, remaining_sell):
-        orders = []
-
-        disregard_edge = 1
-        default_edge = 1
-        join_edge = 1
-
-        asks_above_fair = [
-            price
-            for price in self.order_book.ask_prices
-            if price > round(fair_value + disregard_edge)
-        ]
-        bids_below_fair = [
-            price
-            for price in self.order_book.bid_prices
-            if price < round(fair_value - disregard_edge)
-        ]
-
-        best_ask_above_fair = min(asks_above_fair) if len(asks_above_fair) > 0 else None
-        best_bid_below_fair = max(bids_below_fair) if len(bids_below_fair) > 0 else None
-
-        ask_price = round(fair_value + default_edge)
-        if best_ask_above_fair is not None:
-            best_ask_idx = self.order_book.ask_prices.index(best_ask_above_fair)
-            best_ask_volume = self.order_book.ask_volumes[best_ask_idx]
-            if abs(best_ask_above_fair - fair_value) <= join_edge:  # best ask volume 1
-                ask_price = best_ask_above_fair
-            else:
-                ask_price = best_ask_above_fair - 1  #
-
-        bid_price = round(fair_value - default_edge)
-        if best_bid_below_fair is not None:
-            best_bid_idx = self.order_book.bid_prices.index(best_bid_below_fair)
-            best_bid_volume = self.order_book.bid_volumes[best_bid_idx]
-            if abs(fair_value - best_bid_below_fair) <= join_edge:  # best bid volume 3
-                bid_price = best_bid_below_fair  # join BEST 0
-            else:
-                bid_price = best_bid_below_fair + 1  # penny
-
-        bid_price = round(bid_price)
-        ask_price = round(ask_price)
-
-        # Scale our order sizes based on how far we are from position limits
-        bid_volume = min(self.mm_default_vol, remaining_buy)
-        ask_volume = min(self.mm_default_vol, remaining_sell)
-
-        # Create the orders if they make sense
-        if bid_volume > 0:
-            bid_order = Order(self.symbol, bid_price, bid_volume)
-            orders.append(bid_order)
-
-        if ask_volume > 0:
-            ask_order = Order(self.symbol, ask_price, -ask_volume)
-            orders.append(ask_order)
-
-        return orders
-
-    def market_make_3(self, fair_value, position, remaining_buy, remaining_sell):
-        orders = []
-
-        mm_package = self.order_book.get_mm_fair(
-            self.detect_mm_volume, with_spread=True
-        )
-        if mm_package is None:
+        mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
+        if mm_price is None:
             return orders
-        else:
-            mm_price = mm_package[0]
-            mm_spread = mm_package[1]
 
-        bid_price = round(mm_price - mm_spread / 2 + 1)
-        ask_price = round(mm_price + mm_spread / 2 - 1)
+        else:
+            join_vol = 6
+
+            bbbm = max(
+                [price for price in self.order_book.bid_prices if price < mm_price]
+            )
+            bbbm_idx = self.order_book.bid_prices.index(bbbm)
+            bbbm_vol = self.order_book.bid_volumes[bbbm_idx]
+
+            baam = min(
+                [price for price in self.order_book.ask_prices if price > mm_price]
+            )
+            baam_idx = self.order_book.ask_prices.index(baam)
+            baam_vol = self.order_book.ask_volumes[baam_idx]
+
+            if bbbm_vol < join_vol:
+                bid_price = bbbm
+            else:
+                bid_price = bbbm + 1
+            bid_price = min(bid_price, ceil(mm_price - 1))
+
+            if baam_vol < join_vol:
+                ask_price = baam
+            else:
+                ask_price = baam - 1
+            ask_price = max(ask_price, floor(mm_price + 1))
 
         # Scale our order sizes based on how far we are from position limits
         bid_volume = min(self.mm_default_vol, remaining_buy)
@@ -835,12 +840,16 @@ class Kelp(Product):
         vwap = self.order_book.vwap
         self.logger.print_numeric("vwap", vwap)
 
+        # DOUBLE CHECK THIS IF LAST MM OR VWAP
         if mm_price is None:
-            current_price = vwap
+            current_price = self.last_mm_price
         else:
             current_price = mm_price
+            self.last_mm_price = mm_price
 
-        fair_value = self.estimate_fair_value_kalman(current_price)
+        self.logger.print_numeric("current_price", current_price)
+
+        fair_value = self.estimate_fair_value(current_price)
         self.logger.print_numeric("fair_value", fair_value)
 
         # ------------------------------------------------
@@ -850,13 +859,13 @@ class Kelp(Product):
         )
         orders += mt_orders
 
-        # liquidated_orders, position, remaining_buy, remaining_sell = (
-        #     self.liquidate_position(fair_value, position, remaining_buy, remaining_sell)
-        # )
-        # orders += liquidated_orders
+        liquidated_orders, position, remaining_buy, remaining_sell = (
+            self.liquidate_position(fair_value, position, remaining_buy, remaining_sell)
+        )
+        orders += liquidated_orders
         # ------------------------------------------------
         # Market making
-        orders += self.market_make_3(
+        orders += self.market_make_2(
             fair_value, position, remaining_buy, remaining_sell
         )
 
@@ -866,12 +875,12 @@ class Kelp(Product):
         return orders
 
 
-# ------------------KELP-------------------#
+# ------------------Squid Ink-------------------#
 class Squid(Product):
     def __init__(self, config):
         super().__init__(config)
 
-        # Kelp parameters
+        # Squid parameters
         self.name = "Squid Ink"
         self.symbol = "SQUID_INK"
         self.pos_limit = 50
@@ -879,6 +888,80 @@ class Squid(Product):
         # Order book
         self.update_order_book = config.get("update_order_book")
         self.order_book = OrderBook()
+
+        # Price estimation
+        self.detect_mm_volume = config.get("detect_mm_volume")
+        self.short_window = config.get("short_window")
+        self.short_history = deque(maxlen=self.short_window)
+        self.long_window = config.get("long_window")
+        self.long_history = deque(maxlen=self.long_window)
+
+        # Directional trading
+        self.dt_default_vol = config.get("dt_default_vol")
+        self.dt_signal_strength = config.get("dt_signal_strength")
+
+    def directional_trade(self, position, remaining_buy, remaining_sell):
+        orders = []
+
+        # Check if we have enough data points for both moving averages
+        if (
+            len(self.long_history) >= self.long_window
+            and len(self.short_history) >= self.short_window
+        ):
+            long_mean = sum(self.long_history) / self.long_window
+            short_mean = sum(self.short_history) / self.short_window
+            self.logger.print_numeric("long_mean", long_mean)
+            self.logger.print_numeric("short_mean", short_mean)
+
+            # USE FOR THE VOLUME
+            percentage_diff = abs(long_mean - short_mean) / self.short_history[-1]
+            self.logger.print_numeric("percentage_diff", percentage_diff)
+            # Current state
+            short_below_long = short_mean < long_mean
+
+            if short_below_long:
+                # Long signal
+                if position >= 0:
+                    signal_strength = self.dt_signal_strength
+                    bid_volume = min(
+                        self.dt_default_vol,
+                        remaining_buy,
+                    )
+                else:
+                    signal_strength = 0
+                    bid_volume = min(remaining_buy, abs(position))
+
+                if percentage_diff > signal_strength and remaining_buy > 0:
+                    best_bid_price, best_bid_volume = self.order_book.get_best_ask()
+                    bid_price = best_bid_price
+                    bid_volume = min(bid_volume, best_bid_volume)
+                    bid_order = Order(self.symbol, bid_price, bid_volume)
+                    orders.append(bid_order)
+                    remaining_buy -= bid_volume
+                    position += bid_volume
+
+            elif not short_below_long:
+                # Short signal
+                if position <= 0:
+                    signal_strength = self.dt_signal_strength
+                    ask_volume = min(
+                        self.dt_default_vol,
+                        remaining_sell,
+                    )
+                else:
+                    signal_strength = 0
+                    ask_volume = min(remaining_sell, position)
+
+                if remaining_sell > 0 and percentage_diff > signal_strength:
+                    best_ask_price, best_ask_volume = self.order_book.get_best_bid()
+                    ask_price = best_ask_price
+                    ask_volume = min(ask_volume, best_ask_volume)
+                    ask_order = Order(self.symbol, ask_price, -ask_volume)
+                    orders.append(ask_order)
+                    remaining_sell -= ask_volume
+                    position -= ask_volume
+
+        return orders
 
     def calculate_orders(self, order_depths, position, own_trades, timestamp):
         self.print_product_begin(timestamp)
@@ -889,6 +972,28 @@ class Squid(Product):
         self.logger.print_numeric("position", position)
         remaining_buy = self.pos_limit - position
         remaining_sell = self.pos_limit + position
+
+        # --------------Price estimation------------------
+        mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
+        self.logger.print_numeric("mm_price", mm_price)
+        vwap = self.order_book.vwap
+        self.logger.print_numeric("vwap", vwap)
+
+        if mm_price is None:
+            current_price = self.order_book.vwap
+        else:
+            current_price = mm_price
+
+        self.logger.print_numeric("current_price", current_price)
+
+        self.short_history.append(current_price)
+        self.long_history.append(current_price)
+        # ------------------------------------------------
+
+        directional_orders = self.directional_trade(
+            position, remaining_buy, remaining_sell
+        )
+        orders += directional_orders
 
         self.print_orders(orders)
         self.print_product_end()
@@ -921,14 +1026,19 @@ config_kelp = {
     "mt_take_width": 1,
     "mt_clear_width": 0,
     "mt_adverse_volume": 15,  # Maximum mt volume
-    "mt_reversion_beta": -0.23,
     # Market making parameters
     "mm_default_vol": 20,
-    "mm_disregard_edge": 2,
 }
 
 config_squid = {
     "update_order_book": True,
+    "detect_mm_volume": 15,  # Volume to detect market maker
+    # Price estimation
+    "short_window": 80,
+    "long_window": 410,
+    # Directional parameters
+    "dt_default_vol": 5,
+    "dt_signal_strength": 0.0015,
 }
 
 
@@ -946,9 +1056,9 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
-            # products["SQUID_INK"] = Squid(config_squid)
+            products["SQUID_INK"] = Squid(config_squid)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
@@ -1001,7 +1111,7 @@ class CustomLogger:
     def print_numeric(self, label, value, end="\n") -> None:
         """Print a labeled numeric value with consistent formatting."""
         if isinstance(value, float):
-            self.logs += f"{label} {value:.2f}"
+            self.logs += f"{label} {value:.5f}"
         else:
             self.logs += f"{label} {value}"
 

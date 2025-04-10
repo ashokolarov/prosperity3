@@ -131,8 +131,8 @@ class OrderBook:
                 if self.bid_volumes[idx] >= adverse_volume
             ]
 
-            mm_ask = min(filtered_ask) if len(filtered_ask) > 0 else None
-            mm_bid = max(filtered_bid) if len(filtered_bid) > 0 else None
+            mm_ask = max(filtered_ask) if len(filtered_ask) > 0 else None
+            mm_bid = min(filtered_bid) if len(filtered_bid) > 0 else None
 
             if mm_ask is None or mm_bid is None:
                 return None

@@ -33,11 +33,21 @@ config_kelp = {
     "mt_adverse_volume": 15,  # Maximum mt volume
     # Market making parameters
     "mm_default_vol": 20,
-    "mm_disregard_edge": 2,
+    "mm_default_edge": 1,
+    "mm_disregard_edge": 1,
+    "mm_join_edge": 0,
+    "mm_join_volume": 3,
 }
 
 config_squid = {
     "update_order_book": True,
+    "detect_mm_volume": 15,  # Volume to detect market maker
+    # Price estimation
+    "short_window": 80,
+    "long_window": 410,
+    # Directional parameters
+    "dt_default_vol": 5,
+    "dt_signal_strength": 0.0015,
 }
 
 
@@ -55,9 +65,9 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
-            # products["SQUID_INK"] = Squid(config_squid)
+            products["SQUID_INK"] = Squid(config_squid)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]

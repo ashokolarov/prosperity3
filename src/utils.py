@@ -13,7 +13,7 @@ class CustomLogger:
     def print_numeric(self, label, value, end="\n") -> None:
         """Print a labeled numeric value with consistent formatting."""
         if isinstance(value, float):
-            self.logs += f"{label} {value:.2f}"
+            self.logs += f"{label} {value:.5f}"
         else:
             self.logs += f"{label} {value}"
 
