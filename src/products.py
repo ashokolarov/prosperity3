@@ -739,6 +739,7 @@ class PicnicBasket1(Product):
         self.name = "Picnic Basket 1"
         self.symbol = "PICNIC_BASKET1"
         self.pos_limit = 60
+        self.constituents = {"CROISSANTS": 6, "JAMS": 3, "DJEMBES": 1}
 
         # Order book
         self.update_order_book = config.get("update_order_book")
@@ -769,6 +770,11 @@ class PicnicBasket2(Product):
         self.name = "Picnic Basket 2"
         self.symbol = "PICNIC_BASKET2"
         self.pos_limit = 100
+
+        self.constituents = {
+            "CROISSANTS": 4,
+            "JAMS": 2,
+        }
 
         # Order book
         self.update_order_book = config.get("update_order_book")

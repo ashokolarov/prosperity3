@@ -94,9 +94,9 @@ class Trader:
         result = {}
         if not state.traderData:
             products = {}
-            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
-            products["KELP"] = Kelp(config_kelp)
-            products["SQUID_INK"] = Squid(config_squid)
+            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            # products["KELP"] = Kelp(config_kelp)
+            # products["SQUID_INK"] = Squid(config_squid)
             products["CROISSANTS"] = Croissants(config_croissants)
             products["JAMS"] = Jams(config_jams)
             products["DJEMBES"] = Djembes(config_djembes)
@@ -135,7 +135,7 @@ class Trader:
 
         t2 = time()
 
-        self.logger.print(f"runtime {t2 - t1}")
+        self.logger.print_numeric("runtime", t2 - t1)
         self.logger.print("TRADER_E")
         self.logger.flush()
 

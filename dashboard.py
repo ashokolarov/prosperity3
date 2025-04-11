@@ -8,6 +8,8 @@ from dash import Input, Output
 from development.log_processing import from_csv, process_log
 from development.visualizer.layout import get_layout
 
+import numpy as np
+
 
 def get_visualizer(log_file=None, prosperity_round=None, day=None):
     # Extract the lines
@@ -21,7 +23,9 @@ def get_visualizer(log_file=None, prosperity_round=None, day=None):
         file_name = f"round{prosperity_round}_day{day}.csv"
 
     products = activities["product"].unique()
-    timestamps = sorted(activities["timestamp"].unique())
+    product_data = activities[activities["product"] == products[0]].reset_index()
+    timestamps = len(product_data["timestamp"])
+    timestamps = np.arange(0, timestamps * 100, 100)
 
     # Initialize Dash app
     app = dash.Dash(__name__)
@@ -83,9 +87,7 @@ def get_visualizer(log_file=None, prosperity_round=None, day=None):
         activity = activities[activities["product"] == selected_product].reset_index()
 
         if product_data is not None:
-            t_idx_prod = product_data[
-                product_data["timestamp"] == timestamp_value
-            ].index[0]
+            t_idx_prod = product_data[timestamps == timestamp_value].index[0]
         t_idx_act = activity[activity["timestamp"] == timestamp_value].index[0]
 
         # Position Chart
@@ -322,17 +324,21 @@ def get_visualizer(log_file=None, prosperity_round=None, day=None):
                 position_data.append(
                     {
                         "Position_Type": "MT Position",
-                        "Value": product_data["mt_position"].iloc[t_idx_prod]
-                        if "mt_position" in product_data.columns
-                        else 0,
+                        "Value": (
+                            product_data["mt_position"].iloc[t_idx_prod]
+                            if "mt_position" in product_data.columns
+                            else 0
+                        ),
                     }
                 )
                 position_data.append(
                     {
                         "Position_Type": "MM Position",
-                        "Value": product_data["mm_position"].iloc[t_idx_prod]
-                        if "mm_position" in product_data.columns
-                        else 0,
+                        "Value": (
+                            product_data["mm_position"].iloc[t_idx_prod]
+                            if "mm_position" in product_data.columns
+                            else 0
+                        ),
                     }
                 )
 
@@ -388,7 +394,7 @@ if __name__ == "__main__":
             raise ("Please provide a log file or specify a round and day.")
         else:
             print(args.round, args.day)
-            app = get_visualizer(round=args.round, day=args.day)
+            app = get_visualizer(prosperity_round=args.round, day=args.day)
     else:
         app = get_visualizer(log_file=args.log_file)
 
