@@ -3,7 +3,16 @@ from time import time
 import jsonpickle
 
 from datamodel import TradingState
-from products import Kelp, RainforestResin, Squid
+from products import (
+    Croissants,
+    Djembes,
+    Jams,
+    Kelp,
+    PicnicBasket1,
+    PicnicBasket2,
+    RainforestResin,
+    Squid,
+)
 from utils import CustomLogger
 
 config_rainforest = {
@@ -50,6 +59,26 @@ config_squid = {
     "dt_signal_strength": 0.0015,
 }
 
+config_croissants = {
+    "update_order_book": True,
+}
+
+config_jams = {
+    "update_order_book": True,
+}
+
+config_djembes = {
+    "update_order_book": True,
+}
+
+config_picnic_basket_1 = {
+    "update_order_book": True,
+}
+
+config_picnic_basket_2 = {
+    "update_order_book": True,
+}
+
 
 class Trader:
     def __init__(self):
@@ -68,6 +97,11 @@ class Trader:
             products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
             products["SQUID_INK"] = Squid(config_squid)
+            products["CROISSANTS"] = Croissants(config_croissants)
+            products["JAMS"] = Jams(config_jams)
+            products["DJEMBES"] = Djembes(config_djembes)
+            products["PICNIC_BASKET_1"] = PicnicBasket1(config_picnic_basket_1)
+            products["PICNIC_BASKET_2"] = PicnicBasket2(config_picnic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]

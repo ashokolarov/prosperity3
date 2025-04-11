@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from collections import deque
-from math import ceil, floor
 
 from datamodel import Order
 from market_utils import OrderBook
@@ -634,6 +633,156 @@ class Squid(Product):
             position, remaining_buy, remaining_sell
         )
         orders += directional_orders
+
+        self.print_orders(orders)
+        self.print_product_end()
+
+        return orders
+
+
+# -----------------Croissant-----------------#
+class Croissants(Product):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Croissant parameters
+        self.name = "Croissants"
+        self.symbol = "CROISSANTS"
+        self.pos_limit = 250
+
+        # Order book
+        self.update_order_book = config.get("update_order_book")
+        self.order_book = OrderBook()
+
+    def calculate_orders(self, order_depths, position, own_trades, timestamp):
+        self.print_product_begin(timestamp)
+        self.order_book.reset(order_depths)
+
+        orders = []
+
+        self.logger.print_numeric("position", position)
+        remaining_buy = self.pos_limit - position
+        remaining_sell = self.pos_limit + position
+
+        self.print_orders(orders)
+        self.print_product_end()
+
+        return orders
+
+
+# -----------------Jam-----------------#
+class Jams(Product):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Jam parameters
+        self.name = "Jams"
+        self.symbol = "JAMS"
+        self.pos_limit = 350
+
+        # Order book
+        self.update_order_book = config.get("update_order_book")
+        self.order_book = OrderBook()
+
+    def calculate_orders(self, order_depths, position, own_trades, timestamp):
+        self.print_product_begin(timestamp)
+        self.order_book.reset(order_depths)
+
+        orders = []
+
+        self.logger.print_numeric("position", position)
+        remaining_buy = self.pos_limit - position
+        remaining_sell = self.pos_limit + position
+
+        self.print_orders(orders)
+        self.print_product_end()
+
+        return orders
+
+
+# -----------------Djembe-----------------#
+class Djembes(Product):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Djembe parameters
+        self.name = "Djembes"
+        self.symbol = "DJEMBES"
+        self.pos_limit = 60
+
+        # Order book
+        self.update_order_book = config.get("update_order_book")
+        self.order_book = OrderBook()
+
+    def calculate_orders(self, order_depths, position, own_trades, timestamp):
+        self.print_product_begin(timestamp)
+        self.order_book.reset(order_depths)
+
+        orders = []
+
+        self.logger.print_numeric("position", position)
+        remaining_buy = self.pos_limit - position
+        remaining_sell = self.pos_limit + position
+
+        self.print_orders(orders)
+        self.print_product_end()
+
+        return orders
+
+
+# -------------Picnic Basket 1 ----------------#
+class PicnicBasket1(Product):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Picnic Basket 1 parameters
+        self.name = "Picnic Basket 1"
+        self.symbol = "PICNIC_BASKET1"
+        self.pos_limit = 60
+
+        # Order book
+        self.update_order_book = config.get("update_order_book")
+        self.order_book = OrderBook()
+
+    def calculate_orders(self, order_depths, position, own_trades, timestamp):
+        self.print_product_begin(timestamp)
+        self.order_book.reset(order_depths)
+
+        orders = []
+
+        self.logger.print_numeric("position", position)
+        remaining_buy = self.pos_limit - position
+        remaining_sell = self.pos_limit + position
+
+        self.print_orders(orders)
+        self.print_product_end()
+
+        return orders
+
+
+# -------------Picnic Basket 2 ----------------#
+class PicnicBasket2(Product):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Picnic Basket 2 parameters
+        self.name = "Picnic Basket 2"
+        self.symbol = "PICNIC_BASKET2"
+        self.pos_limit = 100
+
+        # Order book
+        self.update_order_book = config.get("update_order_book")
+        self.order_book = OrderBook()
+
+    def calculate_orders(self, order_depths, position, own_trades, timestamp):
+        self.print_product_begin(timestamp)
+        self.order_book.reset(order_depths)
+
+        orders = []
+
+        self.logger.print_numeric("position", position)
+        remaining_buy = self.pos_limit - position
+        remaining_sell = self.pos_limit + position
 
         self.print_orders(orders)
         self.print_product_end()
