@@ -66,6 +66,18 @@ class OrderBook:
         else:
             return self.bid_prices[depth], self.bid_volumes[depth]
 
+    def get_bid_prices(self):
+        return deepcopy(self.bid_prices)
+
+    def get_ask_prices(self):
+        return deepcopy(self.ask_prices)
+
+    def get_bid_volumes(self):
+        return deepcopy(self.bid_volumes)
+
+    def get_ask_volumes(self):
+        return deepcopy(self.ask_volumes)
+
     @property
     def bid_orders_depth(self):
         return len(self.bid_prices)

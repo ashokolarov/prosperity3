@@ -16,7 +16,6 @@ from products import (
 from utils import CustomLogger
 
 config_rainforest = {
-    "update_order_book": True,
     # Market taking parameters
     "mt_bid_edge": 1,
     "mt_ask_edge": 1,
@@ -34,7 +33,6 @@ config_rainforest = {
 
 config_kelp = {
     # General
-    "update_order_book": True,
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market taking parameters
     "mt_take_width": 1,
@@ -49,7 +47,7 @@ config_kelp = {
 }
 
 config_squid = {
-    "update_order_book": True,
+    # General
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Price estimation
     "short_window": 80,
@@ -59,24 +57,30 @@ config_squid = {
     "dt_signal_strength": 0.0015,
 }
 
-config_croissants = {
-    "update_order_book": True,
-}
+config_croissants = {}
 
-config_jams = {
-    "update_order_book": True,
-}
+config_jams = {}
 
-config_djembes = {
-    "update_order_book": True,
-}
+config_djembes = {}
 
 config_picnic_basket_1 = {
-    "update_order_book": True,
+    "detect_mm_volume": 15,  # Volume to detect market maker
+    # Market making parameters
+    "mm_default_vol": 20,
+    "mm_default_edge": 4,
+    "mm_disregard_edge": 2,
+    "mm_join_edge": 6,
+    "mm_join_volume": 5,
 }
 
 config_picnic_basket_2 = {
-    "update_order_book": True,
+    "detect_mm_volume": 15,  # Volume to detect market maker
+    # Market making parameters
+    "mm_default_vol": 20,
+    "mm_default_edge": 4,
+    "mm_disregard_edge": 2,
+    "mm_join_edge": 6,
+    "mm_join_volume": 5,
 }
 
 
@@ -96,12 +100,12 @@ class Trader:
             products = {}
             # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             # products["KELP"] = Kelp(config_kelp)
-            # products["SQUID_INK"] = Squid(config_squid)
-            products["CROISSANTS"] = Croissants(config_croissants)
-            products["JAMS"] = Jams(config_jams)
-            products["DJEMBES"] = Djembes(config_djembes)
-            products["PICNIC_BASKET_1"] = PicnicBasket1(config_picnic_basket_1)
-            products["PICNIC_BASKET_2"] = PicnicBasket2(config_picnic_basket_2)
+            products["SQUID_INK"] = Squid(config_squid)
+            # products["CROISSANTS"] = Croissants(config_croissants)
+            # products["JAMS"] = Jams(config_jams)
+            # products["DJEMBES"] = Djembes(config_djembes)
+            # products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
+            # products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
@@ -119,9 +123,11 @@ class Trader:
                 else:
                     own_trades = []
 
-                orders = products[product].calculate_orders(
+                products[product].update_product(
                     order_depth, position, own_trades, timestamp
                 )
+
+                orders = products[product].calculate_orders()
             else:
                 orders = []
 
