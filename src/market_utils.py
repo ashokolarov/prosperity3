@@ -38,9 +38,15 @@ class OrderBook:
         self.bid_prices = deepcopy(self.previous_bid_prices)
         self.bid_volumes = deepcopy(self.previous_bid_volumes)
 
+    def check_if_no_orders(self):
+        if len(self.bid_prices) == 0 and len(self.ask_prices) == 0:
+            return True
+        else:
+            return False
+
     def get_best_bid(self):
         if len(self.bid_prices) == 0:
-            return None
+            return None, None
         else:
             return self.bid_prices[0], self.bid_volumes[0]
 

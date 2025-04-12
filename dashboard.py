@@ -2,13 +2,23 @@ import argparse
 import os
 
 import dash
+import numpy as np
 import plotly.graph_objects as go
 from dash import Input, Output
 
 from development.log_processing import from_csv, process_log
 from development.visualizer.layout import get_layout
 
-import numpy as np
+POSITION_LIMITS = {
+    "RAINFOREST_RESIN": 50,
+    "KELP": 50,
+    "SQUID_INK": 50,
+    "CROISSANTS": 250,
+    "JAMS": 350,
+    "DJEMBES": 60,
+    "PICNIC_BASKET1": 60,
+    "SYNTHETIC_BASKET1": 100,
+}
 
 
 def get_visualizer(log_file=None, prosperity_round=None, day=None):
@@ -90,6 +100,8 @@ def get_visualizer(log_file=None, prosperity_round=None, day=None):
             t_idx_prod = product_data[timestamps == timestamp_value].index[0]
         t_idx_act = activity[activity["timestamp"] == timestamp_value].index[0]
 
+        pos_limit = POSITION_LIMITS[selected_product]
+
         # Position Chart
         position_fig = go.Figure()
         if product_data is not None:
@@ -108,21 +120,21 @@ def get_visualizer(log_file=None, prosperity_round=None, day=None):
             position_fig.add_shape(
                 type="line",
                 x0=min(product_data["timestamp"]),
-                y0=50,
+                y0=pos_limit,
                 x1=max(product_data["timestamp"]),
-                y1=50,
+                y1=pos_limit,
                 line=dict(
-                    color="gray",
-                    width=3,
+                    color="black",
+                    width=4,
                     dash="dash",
                 ),
             )
             position_fig.add_shape(
                 type="line",
                 x0=min(product_data["timestamp"]),
-                y0=-50,
+                y0=-pos_limit,
                 x1=max(product_data["timestamp"]),
-                y1=-50,
+                y1=-pos_limit,
                 line=dict(
                     color="gray",
                     width=3,

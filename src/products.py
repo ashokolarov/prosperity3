@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from collections import deque
 
+import numpy as np
+
 from datamodel import Order
 from market_utils import OrderBook
-from utils import CustomLogger
+from utils import CustomLogger, WelfordStatsWithPriors
 
 
 class Product(ABC):
@@ -48,6 +50,12 @@ class Product(ABC):
             elif quantity < 0:  # Sell order (negative quantity)
                 self.remaining_sell += quantity
                 self.position -= quantity
+
+    def on_timestep_end(self):
+        self.print_orders(self.orders)
+        self.print_product_end()
+
+        return self.orders
 
     @abstractmethod
     def update_product(self, order_depths, position, own_trades, timestamp):
@@ -237,11 +245,6 @@ class RainforestResin(Product):
 
         # Market making
         self.market_make()
-        # ------------------------------------------------
-        self.print_orders(self.orders)
-        self.print_product_end()
-
-        return self.orders
 
 
 # ------------------KELP-------------------#
@@ -471,11 +474,6 @@ class Kelp(Product):
         # Market making
         self.market_make()
 
-        self.print_orders(self.orders)
-        self.print_product_end()
-
-        return self.orders
-
 
 # ------------------Squid Ink-------------------#
 class Squid(Product):
@@ -585,12 +583,8 @@ class Squid(Product):
                     self.place_order(ask_price, -ask_volume)
 
     def calculate_orders(self):
+        # Directional trading
         self.directional_trade()
-
-        self.print_orders(self.orders)
-        self.print_product_end()
-
-        return self.orders
 
 
 # -----------------Croissant-----------------#
@@ -621,11 +615,8 @@ class Croissants(Product):
         self.remaining_buy = self.pos_limit - position
         self.remaining_sell = self.pos_limit + position
 
-    def calculate_orders(self, order_depths, position, own_trades, timestamp):
-        self.print_orders(self.orders)
-        self.print_product_end()
-
-        return self.orders
+    def calculate_orders(self):
+        pass
 
 
 # -----------------Jam-----------------#
@@ -656,11 +647,8 @@ class Jams(Product):
         self.remaining_buy = self.pos_limit - position
         self.remaining_sell = self.pos_limit + position
 
-    def calculate_orders(self, order_depths, position, own_trades, timestamp):
-        self.print_orders(self.orders)
-        self.print_product_end()
-
-        return self.orders
+    def calculate_orders(self):
+        pass
 
 
 # -----------------Djembe-----------------#
@@ -691,11 +679,8 @@ class Djembes(Product):
         self.remaining_buy = self.pos_limit - position
         self.remaining_sell = self.pos_limit + position
 
-    def calculate_orders(self, order_depths, position, own_trades, timestamp):
-        self.print_orders(self.orders)
-        self.print_product_end()
-
-        return self.orders
+    def calculate_orders(self):
+        pass
 
 
 # -------------Picnic Basket 1 ----------------#
@@ -805,12 +790,9 @@ class PicnicBasket1(Product):
 
     def calculate_orders(self):
         # Market making
-        self.market_make()
+        # self.market_make()
 
-        self.print_orders(self.orders)
-        self.print_product_end()
-
-        return self.orders
+        pass
 
 
 # -------------Picnic Basket 2 ----------------#
@@ -920,12 +902,9 @@ class PicnicBasket2(Product):
 
     def calculate_orders(self):
         # Market making
-        self.market_make()
+        # self.market_make()
 
-        self.print_orders(self.orders)
-        self.print_product_end()
-
-        return self.orders
+        pass
 
 
 # Synthetic Basket 1
@@ -936,3 +915,469 @@ class SyntheticBasket1(Product):
         # Synthetic Basket 1 parameters
         self.name = "Synthetic Basket 1"
         self.symbol = "SYNTHETIC_BASKET1"
+
+        # Constituent products
+        self.composition = ["PICNIC_BASKET1", "CROISSANTS", "JAMS", "DJEMBES"]
+
+        # Price tracking
+        self.N = 30000
+        self.converge_window = 50
+        self.BUY_SPREAD_MEAN = 60.08
+        self.BUY_SPREAD_VAR = 7246.50
+        self.SELL_SPREAD_MEAN = 37.44
+        self.SELL_SPREAD_VAR = 7250.25
+
+        self.buy_spread_stats = WelfordStatsWithPriors(
+            self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
+        )
+        self.sell_spread_stats = WelfordStatsWithPriors(
+            self.SELL_SPREAD_MEAN, self.SELL_SPREAD_VAR, self.N
+        )
+
+        # Open and close position thresholds
+        self.buy_entry = config.get("buy_entry")
+        self.buy_exit = config.get("buy_exit")
+        self.sell_entry = config.get("sell_entry")
+        self.sell_exit = config.get("sell_exit")
+
+        self.max_basket_position = 41
+        self.baskets_long = 0
+        self.baskets_short = 0
+
+        self.updates = 0
+
+    def update_product(self, order_depths, position, own_trades, timestamp):
+        pass
+
+    def calculate_orders(self, products, timestamp):
+        self.print_product_begin()
+
+        # Set timestamp
+        self.timestamp = timestamp
+        self.updates += 1
+
+        # Reset orders
+        self.orders = []
+
+        for constituent in self.composition:
+            if constituent not in products.keys():
+                return
+            if products[constituent].order_book.check_if_no_orders():
+                return
+
+        pb1 = products["PICNIC_BASKET1"]
+        croissants = products["CROISSANTS"]
+        jams = products["JAMS"]
+        djembes = products["DJEMBES"]
+
+        pb1_ask_price, pb1_ask_volume = pb1.order_book.get_best_ask()
+        pb1_bid_price, pb1_bid_volume = pb1.order_book.get_best_bid()
+
+        croissants_ask_price, croissants_ask_volume = (
+            croissants.order_book.get_best_ask()
+        )
+        croissants_bid_price, croissants_bid_volume = (
+            croissants.order_book.get_best_bid()
+        )
+
+        jams_ask_price, jams_ask_volume = jams.order_book.get_best_ask()
+        jams_bid_price, jams_bid_volume = jams.order_book.get_best_bid()
+
+        djembes_ask_price, djembes_ask_volume = djembes.order_book.get_best_ask()
+        djembes_bid_price, djembes_bid_volume = djembes.order_book.get_best_bid()
+
+        buy_spread = pb1_ask_price - (
+            6 * croissants_bid_price + 3 * jams_bid_price + 1 * djembes_bid_price
+        )
+        sell_spread = pb1_bid_price - (
+            6 * croissants_ask_price + 3 * jams_ask_price + 1 * djembes_ask_price
+        )
+
+        self.buy_spread_stats.update(buy_spread)
+        self.sell_spread_stats.update(sell_spread)
+
+        if self.updates < self.converge_window:
+            self.on_timestep_end()
+            return
+
+        self.logger.print_numeric("buy_spread", buy_spread)
+        self.logger.print_numeric("sell_spread", sell_spread)
+
+        # BASKET BUY STRATEGY (Long PB1, Short Components)
+        # Calculate max basket units based on position limits
+        # How many complete baskets can we trade?
+        basket_buy_limits = [
+            pb1.remaining_buy,  # Each basket needs 1 PB1
+            croissants.remaining_sell // 6,  # Each basket needs to short 6 Croissants
+            jams.remaining_sell // 3,  # Each basket needs to short 3 Jams
+            djembes.remaining_sell,  # Each basket needs to short 1 Djembe
+        ]
+
+        # Calculate max basket units based on available market liquidity
+        liquidity_buy_limits = [
+            pb1_ask_volume,  # Can only buy what's available
+            croissants_bid_volume // 6,  # Can only sell what someone's willing to buy
+            jams_bid_volume // 3,
+            djembes_bid_volume,
+        ]
+        max_baskets_buy = min(min(basket_buy_limits), min(liquidity_buy_limits))
+
+        # BASKET SELL STRATEGY (Short PB1, Long Components)
+        # Calculate max basket units based on position limits
+        basket_sell_limits = [
+            pb1.remaining_sell,  # Each basket needs to short 1 PB1
+            croissants.remaining_buy // 6,  # Each basket needs to buy 6 Croissants
+            jams.remaining_buy // 3,  # Each basket needs to buy 3 Jams
+            djembes.remaining_buy,  # Each basket needs to buy 1 Djembe
+        ]
+
+        # Calculate max basket units based on available market liquidity
+        liquidity_sell_limits = [
+            pb1_bid_volume,  # Can only sell what someone's willing to buy
+            croissants_ask_volume // 6,  # Can only buy what's available
+            jams_ask_volume // 3,
+            djembes_ask_volume,
+        ]
+
+        # The limiting factor is the minimum of both constraints
+        max_baskets_sell = min(min(basket_sell_limits), min(liquidity_sell_limits))
+
+        buy_std = self.buy_spread_stats.get_std()
+        z_score_buy = (buy_spread - self.BUY_SPREAD_MEAN) / buy_std
+        self.logger.print_numeric("z_score_buy", z_score_buy)
+
+        sell_std = self.sell_spread_stats.get_std()
+        z_score_sell = (sell_spread - self.SELL_SPREAD_MEAN) / sell_std
+        self.logger.print_numeric("z_score_sell", z_score_sell)
+
+        if (
+            z_score_buy <= -self.buy_entry
+            and max_baskets_buy > 0
+            and self.baskets_long < self.max_basket_position
+        ):
+            available_for_new_positions = self.max_basket_position - self.baskets_long
+            new_baskets = min(max_baskets_buy, available_for_new_positions)
+
+            # Calculate exact volumes while respecting the basket ratio
+            if new_baskets > 0:
+                pb1_buy_volume = new_baskets
+                croissants_sell_volume = new_baskets * 6
+                jams_sell_volume = new_baskets * 3
+                djembes_sell_volume = new_baskets
+
+                # Place orders
+                pb1.place_order(pb1_ask_price, pb1_buy_volume)
+                croissants.place_order(croissants_bid_price, -croissants_sell_volume)
+                jams.place_order(jams_bid_price, -jams_sell_volume)
+                djembes.place_order(djembes_bid_price, -djembes_sell_volume)
+
+                self.baskets_long += new_baskets
+
+        elif (
+            z_score_buy >= -self.buy_exit
+            and self.baskets_long > 0
+            and max_baskets_sell > 0
+        ):
+            # Determine how many baskets to unwind
+            baskets_to_unwind = min(max_baskets_sell, self.baskets_long)
+
+            if baskets_to_unwind > 0:
+                pb1_sell_volume = baskets_to_unwind
+                croissants_buy_volume = baskets_to_unwind * 6
+                jams_buy_volume = baskets_to_unwind * 3
+                djembes_buy_volume = baskets_to_unwind
+
+                # Place orders
+                pb1.place_order(pb1_bid_price, -pb1_sell_volume)
+                croissants.place_order(croissants_ask_price, croissants_buy_volume)
+                jams.place_order(jams_ask_price, jams_buy_volume)
+                djembes.place_order(djembes_ask_price, djembes_buy_volume)
+
+                self.baskets_long -= baskets_to_unwind
+
+        if (
+            z_score_sell >= self.sell_entry
+            and self.baskets_short < self.max_basket_position
+            and max_baskets_sell > 0
+        ):
+            available_for_new_positions = self.max_basket_position - self.baskets_short
+            new_baskets = min(max_baskets_sell, available_for_new_positions)
+
+            if new_baskets > 0:
+                pb1_sell_volume = new_baskets
+                croissants_buy_volume = new_baskets * 6
+                jams_buy_volume = new_baskets * 3
+                djembes_buy_volume = new_baskets
+
+                # Place orders
+                pb1.place_order(pb1_bid_price, -pb1_sell_volume)
+                croissants.place_order(croissants_ask_price, croissants_buy_volume)
+                jams.place_order(jams_ask_price, jams_buy_volume)
+                djembes.place_order(djembes_ask_price, djembes_buy_volume)
+
+                self.baskets_short += new_baskets
+        elif (
+            z_score_sell <= self.sell_exit
+            and self.baskets_short > 0
+            and max_baskets_buy > 0
+        ):
+            # Determine how many baskets to unwind
+            baskets_to_unwind = min(max_baskets_buy, self.baskets_short)
+
+            if baskets_to_unwind:
+                pb1_buy_volume = baskets_to_unwind
+                croissants_sell_volume = baskets_to_unwind * 6
+                jams_sell_volume = baskets_to_unwind * 3
+                djembes_sell_volume = baskets_to_unwind
+
+                # Place orders
+                pb1.place_order(pb1_ask_price, pb1_buy_volume)
+                croissants.place_order(croissants_bid_price, -croissants_sell_volume)
+                jams.place_order(jams_bid_price, -jams_sell_volume)
+                djembes.place_order(djembes_bid_price, -djembes_sell_volume)
+
+                self.baskets_short -= baskets_to_unwind
+
+        self.on_timestep_end()
+
+
+# Synthetic Basket 1
+class SyntheticBasket2(Product):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Synthetic Basket 1 parameters
+        self.name = "Synthetic Basket 1"
+        self.symbol = "SYNTHETIC_BASKET1"
+
+        # Constituent products
+        self.composition = ["PICNIC_BASKET1", "CROISSANTS", "JAMS", "DJEMBES"]
+
+        # Price tracking
+        self.N = 30000
+        self.converge_window = 50
+        self.BUY_SPREAD_MEAN = 60.08
+        self.BUY_SPREAD_VAR = 7246.50
+        self.SELL_SPREAD_MEAN = 37.44
+        self.SELL_SPREAD_VAR = 7250.25
+
+        self.buy_spread_stats = WelfordStatsWithPriors(
+            self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
+        )
+        self.sell_spread_stats = WelfordStatsWithPriors(
+            self.SELL_SPREAD_MEAN, self.SELL_SPREAD_VAR, self.N
+        )
+
+        # Open and close position thresholds
+        self.buy_entry = config.get("buy_entry")
+        self.buy_exit = config.get("buy_exit")
+        self.sell_entry = config.get("sell_entry")
+        self.sell_exit = config.get("sell_exit")
+
+        self.max_basket_position = 41
+        self.baskets_long = 0
+        self.baskets_short = 0
+
+        self.updates = 0
+
+    def update_product(self, order_depths, position, own_trades, timestamp):
+        pass
+
+    def calculate_orders(self, products, timestamp):
+        self.print_product_begin()
+
+        # Set timestamp
+        self.timestamp = timestamp
+        self.updates += 1
+
+        # Reset orders
+        self.orders = []
+
+        for constituent in self.composition:
+            if constituent not in products.keys():
+                return
+            if products[constituent].order_book.check_if_no_orders():
+                return
+
+        pb1 = products["PICNIC_BASKET1"]
+        croissants = products["CROISSANTS"]
+        jams = products["JAMS"]
+        djembes = products["DJEMBES"]
+
+        pb1_ask_price, pb1_ask_volume = pb1.order_book.get_best_ask()
+        pb1_bid_price, pb1_bid_volume = pb1.order_book.get_best_bid()
+
+        croissants_ask_price, croissants_ask_volume = (
+            croissants.order_book.get_best_ask()
+        )
+        croissants_bid_price, croissants_bid_volume = (
+            croissants.order_book.get_best_bid()
+        )
+
+        jams_ask_price, jams_ask_volume = jams.order_book.get_best_ask()
+        jams_bid_price, jams_bid_volume = jams.order_book.get_best_bid()
+
+        djembes_ask_price, djembes_ask_volume = djembes.order_book.get_best_ask()
+        djembes_bid_price, djembes_bid_volume = djembes.order_book.get_best_bid()
+
+        buy_spread = pb1_ask_price - (
+            6 * croissants_bid_price + 3 * jams_bid_price + 1 * djembes_bid_price
+        )
+        sell_spread = pb1_bid_price - (
+            6 * croissants_ask_price + 3 * jams_ask_price + 1 * djembes_ask_price
+        )
+
+        self.buy_spread_stats.update(buy_spread)
+        self.sell_spread_stats.update(sell_spread)
+
+        if self.updates < self.converge_window:
+            self.on_timestep_end()
+            return
+
+        self.logger.print_numeric("buy_spread", buy_spread)
+        self.logger.print_numeric("sell_spread", sell_spread)
+
+        # BASKET BUY STRATEGY (Long PB1, Short Components)
+        # Calculate max basket units based on position limits
+        # How many complete baskets can we trade?
+        basket_buy_limits = [
+            pb1.remaining_buy,  # Each basket needs 1 PB1
+            croissants.remaining_sell // 6,  # Each basket needs to short 6 Croissants
+            jams.remaining_sell // 3,  # Each basket needs to short 3 Jams
+            djembes.remaining_sell,  # Each basket needs to short 1 Djembe
+        ]
+
+        # Calculate max basket units based on available market liquidity
+        liquidity_buy_limits = [
+            pb1_ask_volume,  # Can only buy what's available
+            croissants_bid_volume // 6,  # Can only sell what someone's willing to buy
+            jams_bid_volume // 3,
+            djembes_bid_volume,
+        ]
+        max_baskets_buy = min(min(basket_buy_limits), min(liquidity_buy_limits))
+
+        # BASKET SELL STRATEGY (Short PB1, Long Components)
+        # Calculate max basket units based on position limits
+        basket_sell_limits = [
+            pb1.remaining_sell,  # Each basket needs to short 1 PB1
+            croissants.remaining_buy // 6,  # Each basket needs to buy 6 Croissants
+            jams.remaining_buy // 3,  # Each basket needs to buy 3 Jams
+            djembes.remaining_buy,  # Each basket needs to buy 1 Djembe
+        ]
+
+        # Calculate max basket units based on available market liquidity
+        liquidity_sell_limits = [
+            pb1_bid_volume,  # Can only sell what someone's willing to buy
+            croissants_ask_volume // 6,  # Can only buy what's available
+            jams_ask_volume // 3,
+            djembes_ask_volume,
+        ]
+
+        # The limiting factor is the minimum of both constraints
+        max_baskets_sell = min(min(basket_sell_limits), min(liquidity_sell_limits))
+
+        buy_std = self.buy_spread_stats.get_std()
+        z_score_buy = (buy_spread - self.BUY_SPREAD_MEAN) / buy_std
+        self.logger.print_numeric("z_score_buy", z_score_buy)
+
+        sell_std = self.sell_spread_stats.get_std()
+        z_score_sell = (sell_spread - self.SELL_SPREAD_MEAN) / sell_std
+        self.logger.print_numeric("z_score_sell", z_score_sell)
+
+        if (
+            z_score_buy <= -self.buy_entry
+            and max_baskets_buy > 0
+            and self.baskets_long < self.max_basket_position
+        ):
+            available_for_new_positions = self.max_basket_position - self.baskets_long
+            new_baskets = min(max_baskets_buy, available_for_new_positions)
+
+            # Calculate exact volumes while respecting the basket ratio
+            if new_baskets > 0:
+                pb1_buy_volume = new_baskets
+                croissants_sell_volume = new_baskets * 6
+                jams_sell_volume = new_baskets * 3
+                djembes_sell_volume = new_baskets
+
+                # Place orders
+                pb1.place_order(pb1_ask_price, pb1_buy_volume)
+                croissants.place_order(croissants_bid_price, -croissants_sell_volume)
+                jams.place_order(jams_bid_price, -jams_sell_volume)
+                djembes.place_order(djembes_bid_price, -djembes_sell_volume)
+
+                self.baskets_long += new_baskets
+
+                self.logger.print_numeric("buy_spread_open", buy_spread)
+
+        elif (
+            z_score_buy >= -self.buy_exit
+            and self.baskets_long > 0
+            and max_baskets_sell > 0
+        ):
+            # Determine how many baskets to unwind
+            baskets_to_unwind = min(max_baskets_sell, self.baskets_long)
+
+            if baskets_to_unwind > 0:
+                pb1_sell_volume = baskets_to_unwind
+                croissants_buy_volume = baskets_to_unwind * 6
+                jams_buy_volume = baskets_to_unwind * 3
+                djembes_buy_volume = baskets_to_unwind
+
+                # Place orders
+                pb1.place_order(pb1_bid_price, -pb1_sell_volume)
+                croissants.place_order(croissants_ask_price, croissants_buy_volume)
+                jams.place_order(jams_ask_price, jams_buy_volume)
+                djembes.place_order(djembes_ask_price, djembes_buy_volume)
+
+                self.baskets_long -= baskets_to_unwind
+
+                self.logger.print_numeric("buy_spread_close", buy_spread)
+
+        if (
+            z_score_sell >= self.sell_entry
+            and self.baskets_short < self.max_basket_position
+            and max_baskets_sell > 0
+        ):
+            available_for_new_positions = self.max_basket_position - self.baskets_short
+            new_baskets = min(max_baskets_sell, available_for_new_positions)
+
+            if new_baskets > 0:
+                pb1_sell_volume = new_baskets
+                croissants_buy_volume = new_baskets * 6
+                jams_buy_volume = new_baskets * 3
+                djembes_buy_volume = new_baskets
+
+                # Place orders
+                pb1.place_order(pb1_bid_price, -pb1_sell_volume)
+                croissants.place_order(croissants_ask_price, croissants_buy_volume)
+                jams.place_order(jams_ask_price, jams_buy_volume)
+                djembes.place_order(djembes_ask_price, djembes_buy_volume)
+
+                self.baskets_short += new_baskets
+
+                self.logger.print_numeric("sell_spread_open", sell_spread)
+        elif (
+            z_score_sell <= self.sell_exit
+            and self.baskets_short > 0
+            and max_baskets_buy > 0
+        ):
+            # Determine how many baskets to unwind
+            baskets_to_unwind = min(max_baskets_buy, self.baskets_short)
+
+            if baskets_to_unwind:
+                pb1_buy_volume = baskets_to_unwind
+                croissants_sell_volume = baskets_to_unwind * 6
+                jams_sell_volume = baskets_to_unwind * 3
+                djembes_sell_volume = baskets_to_unwind
+
+                # Place orders
+                pb1.place_order(pb1_ask_price, pb1_buy_volume)
+                croissants.place_order(croissants_bid_price, -croissants_sell_volume)
+                jams.place_order(jams_bid_price, -jams_sell_volume)
+                djembes.place_order(djembes_bid_price, -djembes_sell_volume)
+
+                self.baskets_short -= baskets_to_unwind
+
+                self.logger.print_numeric("sell_spread_close", sell_spread)
+
+        self.on_timestep_end()
