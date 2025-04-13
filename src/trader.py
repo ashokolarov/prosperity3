@@ -52,11 +52,13 @@ config_squid = {
     # General
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Price estimation
-    "short_window": 80,
+    "short_window": 90,
     "long_window": 410,
+    "std_window": 500,
     # Directional parameters
     "dt_default_vol": 5,
-    "dt_signal_strength": 0.0015,
+    "dt_threshold_z": 1.0,
+    "z_close_threshold": 0.1,
 }
 
 config_croissants = {}
@@ -94,7 +96,7 @@ config_synthetic_basket_1 = {
 }
 
 config_synthetic_basket_2 = {
-    "N": 50,
+    "N": 250,
     "buy_entry": 1.5,
     "buy_exit": 0.5,
     "sell_entry": 1.5,
@@ -122,11 +124,11 @@ class Trader:
             # products["SQUID_INK"] = Squid(config_squid)
             products["CROISSANTS"] = Croissants(config_croissants)
             products["JAMS"] = Jams(config_jams)
-            products["DJEMBES"] = Djembes(config_djembes)
-            products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
+            # products["DJEMBES"] = Djembes(config_djembes)
+            # products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
             products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
-            products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
-            # products["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
+            # products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
+            products["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
@@ -149,18 +151,18 @@ class Trader:
                 )
                 products[product].calculate_orders()
 
+        DEPENDENT = {
+            "SYNTHETIC_BASKET1": ["PICNIC_BASKET1", "CROISSANTS", "JAMS", "DJEMBES"],
+            "SYNTHETIC_BASKET2": ["PICNIC_BASKET2", "CROISSANTS", "JAMS"],
+        }
+
         for product in ["SYNTHETIC_BASKET1", "SYNTHETIC_BASKET2"]:
             try:
                 if product in products:
                     # Check that all dependencies exist
-                    dependent_products = [
-                        "PICNIC_BASKET1",
-                        "CROISSANTS",
-                        "JAMS",
-                        "DJEMBES",
-                    ]
+
                     missing_products = [
-                        p for p in dependent_products if p not in products
+                        p for p in DEPENDENT[product] if p not in products
                     ]
 
                     if not missing_products:
