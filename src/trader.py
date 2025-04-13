@@ -13,6 +13,7 @@ from products import (
     RainforestResin,
     Squid,
     SyntheticBasket1,
+    SyntheticBasket2,
 )
 from utils import CustomLogger
 
@@ -67,7 +68,7 @@ config_djembes = {}
 config_picnic_basket_1 = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market making parameters
-    "mm_default_vol": 20,
+    "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
     "mm_join_edge": 6,
@@ -77,7 +78,7 @@ config_picnic_basket_1 = {
 config_picnic_basket_2 = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market making parameters
-    "mm_default_vol": 20,
+    "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
     "mm_join_edge": 6,
@@ -85,9 +86,18 @@ config_picnic_basket_2 = {
 }
 
 config_synthetic_basket_1 = {
+    "N": 10,
     "buy_entry": 1.5,
     "buy_exit": 0.5,
-    "sell_entry": 2.0,
+    "sell_entry": 1.5,
+    "sell_exit": 0.5,
+}
+
+config_synthetic_basket_2 = {
+    "N": 50,
+    "buy_entry": 1.5,
+    "buy_exit": 0.5,
+    "sell_entry": 1.5,
     "sell_exit": 0.5,
 }
 
@@ -105,6 +115,7 @@ class Trader:
 
         result = {}
         if not state.traderData:
+            # -------------------Normal products -------------------
             products = {}
             # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             # products["KELP"] = Kelp(config_kelp)
@@ -113,16 +124,12 @@ class Trader:
             products["JAMS"] = Jams(config_jams)
             products["DJEMBES"] = Djembes(config_djembes)
             products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
-            # products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
-            synthetic_products = {}
-            synthetic_products["SYNTHETIC_BASKET1"] = SyntheticBasket1(
-                config_synthetic_basket_1
-            )
+            products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
+            products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
             # products["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
-            synthetic_products = traderData["synthetic_products"]
 
         for product in state.order_depths:
             if product in products.keys():
@@ -142,8 +149,36 @@ class Trader:
                 )
                 products[product].calculate_orders()
 
-        for product in synthetic_products.keys():
-            synthetic_products[product].calculate_orders(products, timestamp)
+        for product in ["SYNTHETIC_BASKET1", "SYNTHETIC_BASKET2"]:
+            try:
+                if product in products:
+                    # Check that all dependencies exist
+                    dependent_products = [
+                        "PICNIC_BASKET1",
+                        "CROISSANTS",
+                        "JAMS",
+                        "DJEMBES",
+                    ]
+                    missing_products = [
+                        p for p in dependent_products if p not in products
+                    ]
+
+                    if not missing_products:
+                        products[product].calculate_orders(products, timestamp)
+                        # self.logger.print(
+                        #     f"Successfully calculated orders for {product}"
+                        # )
+                #     else:
+                #         self.logger.print(
+                #             f"Cannot calculate {product}, missing: {missing_products}"
+                #         )
+                # # else:
+                #     self.logger.print(
+                #         f"Warning: {product} not found in products dictionary"
+                #     )
+            except Exception as e:
+                # self.logger.print(f"Error processing {product}: {str(e)}")
+                pass
 
         for product in state.order_depths:
             if product in products.keys():
@@ -151,7 +186,6 @@ class Trader:
 
         traderData = dict()
         traderData["products"] = products
-        traderData["synthetic_products"] = synthetic_products
         traderData = jsonpickle.encode(traderData)
 
         conversions = 1

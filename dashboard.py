@@ -17,7 +17,9 @@ POSITION_LIMITS = {
     "JAMS": 350,
     "DJEMBES": 60,
     "PICNIC_BASKET1": 60,
+    "PICNIC_BASKET2": 100,
     "SYNTHETIC_BASKET1": 100,
+    "SYNTHETIC_BASKET2": 100,
 }
 
 
@@ -101,7 +103,6 @@ def get_visualizer(log_file=None, prosperity_round=None, day=None):
         t_idx_act = activity[activity["timestamp"] == timestamp_value].index[0]
 
         pos_limit = POSITION_LIMITS[selected_product]
-
         # Position Chart
         position_fig = go.Figure()
         if product_data is not None:
