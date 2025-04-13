@@ -910,7 +910,7 @@ class PicnicBasket2(Product):
 
     def calculate_orders(self):
         # Market making
-        # self.market_make()
+        self.market_make()
 
         pass
 
@@ -1183,10 +1183,10 @@ class SyntheticBasket2(Product):
 
         # Price tracking
         self.converge_window = 25
-        self.BUY_SPREAD_MEAN = 36.89
-        self.BUY_SPREAD_VAR = 3582.76
-        self.SELL_SPREAD_MEAN = 23.58
-        self.SELL_SPREAD_VAR = 3583.29
+        self.BUY_SPREAD_MEAN = 39.32
+        self.BUY_SPREAD_VAR = 3667.70
+        self.SELL_SPREAD_MEAN = 26.01
+        self.SELL_SPREAD_VAR = 3668.32
 
         self.buy_spread_stats = WelfordStatsWithPriors(
             self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
@@ -1286,12 +1286,12 @@ class SyntheticBasket2(Product):
         max_baskets_sell = min(min(basket_sell_limits), min(liquidity_sell_limits))
 
         buy_std = self.buy_spread_stats.get_std()
-        buy_mean = self.buy_spread_stats.get_mean()
+        buy_mean = self.BUY_SPREAD_MEAN
         z_score_buy = (buy_spread - buy_mean) / buy_std
         self.logger.print_numeric("z_score_buy", z_score_buy)
 
         sell_std = self.sell_spread_stats.get_std()
-        sell_mean = self.sell_spread_stats.get_mean()
+        sell_mean = self.SELL_SPREAD_MEAN
         z_score_sell = (sell_spread - sell_mean) / sell_std
         self.logger.print_numeric("z_score_sell", z_score_sell)
 

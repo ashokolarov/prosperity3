@@ -782,8 +782,8 @@ class Kelp(Product):
 
 # ------------------Squid Ink-------------------#
 class Squid(Product):
-    def _init_(self, config):
-        super()._init_(config)
+    def __init__(self, config):
+        super().__init__(config)
 
         # Squid parameters
         self.name = "Squid Ink"
@@ -807,7 +807,7 @@ class Squid(Product):
         self.jump_delta = config.get("jump_delta")
 
     def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin()
+        self.print_product_begin(timestamp)
         self.logger.print_numeric("position", position)
 
         # Set timestamp
@@ -1218,7 +1218,7 @@ class PicnicBasket2(Product):
 
     def calculate_orders(self):
         # Market making
-        # self.market_make()
+        self.market_make()
 
         pass
 
@@ -1255,7 +1255,7 @@ class SyntheticBasket1(Product):
         )
 
         # Theoretical max is 41
-        self.max_basket_position = 40
+        self.max_basket_position = 41
         self.baskets_long = 0
         self.baskets_short = 0
 
@@ -1491,10 +1491,10 @@ class SyntheticBasket2(Product):
 
         # Price tracking
         self.converge_window = 25
-        self.BUY_SPREAD_MEAN = 36.89
-        self.BUY_SPREAD_VAR = 3582.76
-        self.SELL_SPREAD_MEAN = 23.58
-        self.SELL_SPREAD_VAR = 3583.29
+        self.BUY_SPREAD_MEAN = 39.32
+        self.BUY_SPREAD_VAR = 3667.70
+        self.SELL_SPREAD_MEAN = 26.01
+        self.SELL_SPREAD_VAR = 3668.32
 
         self.buy_spread_stats = WelfordStatsWithPriors(
             self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
@@ -1504,7 +1504,7 @@ class SyntheticBasket2(Product):
         )
 
         # Theoretical max is 62
-        self.max_basket_position = 60
+        self.max_basket_position = 62
         self.baskets_long = 0
         self.baskets_short = 0
 
@@ -1594,12 +1594,12 @@ class SyntheticBasket2(Product):
         max_baskets_sell = min(min(basket_sell_limits), min(liquidity_sell_limits))
 
         buy_std = self.buy_spread_stats.get_std()
-        buy_mean = self.buy_spread_stats.get_mean()
+        buy_mean = self.BUY_SPREAD_MEAN
         z_score_buy = (buy_spread - buy_mean) / buy_std
         self.logger.print_numeric("z_score_buy", z_score_buy)
 
         sell_std = self.sell_spread_stats.get_std()
-        sell_mean = self.sell_spread_stats.get_mean()
+        sell_mean = self.SELL_SPREAD_MEAN
         z_score_sell = (sell_spread - sell_mean) / sell_std
         self.logger.print_numeric("z_score_sell", z_score_sell)
 
@@ -1777,11 +1777,11 @@ config_synthetic_basket_1 = {
 }
 
 config_synthetic_basket_2 = {
-    "N": 250,
-    "buy_entry": 1.5,
-    "buy_exit": 0.5,
-    "sell_entry": 1.5,
-    "sell_exit": 0.5,
+    "N": 60,
+    "buy_entry": 1.8,
+    "buy_exit": 0.2,
+    "sell_entry": 1.8,
+    "sell_exit": 0.2,
 }
 
 
@@ -1800,16 +1800,16 @@ class Trader:
         if not state.traderData:
             # -------------------Normal products -------------------
             products = {}
-            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
-            # products["SQUID_INK"] = Squid(config_squid)
-            # products["CROISSANTS"] = Croissants(config_croissants)
-            # products["JAMS"] = Jams(config_jams)
-            # products["DJEMBES"] = Djembes(config_djembes)
-            # products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
-            # products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
-            # products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
-            # products["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
+            products["SQUID_INK"] = Squid(config_squid)
+            products["CROISSANTS"] = Croissants(config_croissants)
+            products["JAMS"] = Jams(config_jams)
+            products["DJEMBES"] = Djembes(config_djembes)
+            products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
+            products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
+            products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
+            products["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]

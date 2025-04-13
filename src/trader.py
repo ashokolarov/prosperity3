@@ -28,8 +28,8 @@ config_rainforest = {
     "mm_default_edge": 4,
     "mm_disregard_edge": 1,
     "mm_join_edge": 2,
-    "mm_join_volume": 3,
-    "mm_join_edge_2": 4,
+    "mm_join_volume": 1,
+    "mm_join_edge_2": 3,
     "mm_join_volume_2": 1,
 }
 
@@ -96,11 +96,11 @@ config_synthetic_basket_1 = {
 }
 
 config_synthetic_basket_2 = {
-    "N": 250,
-    "buy_entry": 1.5,
-    "buy_exit": 0.5,
-    "sell_entry": 1.5,
-    "sell_exit": 0.5,
+    "N": 60,
+    "buy_entry": 1.8,
+    "buy_exit": 0.2,
+    "sell_entry": 1.8,
+    "sell_exit": 0.2,
 }
 
 
@@ -119,15 +119,15 @@ class Trader:
         if not state.traderData:
             # -------------------Normal products -------------------
             products = {}
-            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
-            # products["KELP"] = Kelp(config_kelp)
-            # products["SQUID_INK"] = Squid(config_squid)
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["KELP"] = Kelp(config_kelp)
+            products["SQUID_INK"] = Squid(config_squid)
             products["CROISSANTS"] = Croissants(config_croissants)
             products["JAMS"] = Jams(config_jams)
-            # products["DJEMBES"] = Djembes(config_djembes)
-            # products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
+            products["DJEMBES"] = Djembes(config_djembes)
+            products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
             products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
-            # products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
+            products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
             products["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
