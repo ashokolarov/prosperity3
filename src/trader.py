@@ -70,9 +70,9 @@ config_jams = {}
 config_djembes = {}
 
 config_picnic_basket_1 = {
-    "detect_mm_volume": 15,  # Volume to detect market maker
+    "detect_mm_volume": 20,  # Volume to detect market maker
     # Market making parameters
-    "market_making": True,
+    "market_making": False,
     "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
@@ -83,9 +83,9 @@ config_picnic_basket_1 = {
 }
 
 config_picnic_basket_2 = {
-    "detect_mm_volume": 15,  # Volume to detect market maker
+    "detect_mm_volume": 20,  # Volume to detect market maker
     # Market making parameters
-    "market_making": True,
+    "market_making": False,
     "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
