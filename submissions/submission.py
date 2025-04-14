@@ -1019,6 +1019,7 @@ class PicnicBasket1(Product):
         self.detect_mm_volume = config.get("detect_mm_volume")
 
         # Market making parameters
+        self.enable_market_making = config.get("market_making")
         self.mm_default_vol = config.get("mm_default_vol")
         self.mm_default_edge = config.get("mm_default_edge")
         self.mm_disregard_edge = config.get("mm_disregard_edge")
@@ -1109,9 +1110,8 @@ class PicnicBasket1(Product):
 
     def calculate_orders(self):
         # Market making
-        self.market_make()
-
-        pass
+        if self.enable_market_making:
+            self.market_make()
 
 
 # -------------Picnic Basket 2 ----------------#
@@ -1128,6 +1128,7 @@ class PicnicBasket2(Product):
         self.detect_mm_volume = config.get("detect_mm_volume")
 
         # Market making parameters
+        self.enable_market_making = config.get("market_making")
         self.mm_default_vol = config.get("mm_default_vol")
         self.mm_default_edge = config.get("mm_default_edge")
         self.mm_disregard_edge = config.get("mm_disregard_edge")
@@ -1218,7 +1219,8 @@ class PicnicBasket2(Product):
 
     def calculate_orders(self):
         # Market making
-        self.market_make()
+        if self.enable_market_making:
+            self.market_make()
 
         pass
 
@@ -1233,6 +1235,8 @@ class SyntheticBasket1(Product):
 
         # Constituent products
         self.composition = ["PICNIC_BASKET1", "CROISSANTS", "JAMS", "DJEMBES"]
+
+        self.disable_pairs = config.get("disable_pairs")
 
         # Open and close position thresholds
         self.N = config.get("N")
@@ -1255,7 +1259,7 @@ class SyntheticBasket1(Product):
         )
 
         # Theoretical max is 41
-        self.max_basket_position = 41
+        self.max_basket_position = 35
         self.baskets_long = 0
         self.baskets_short = 0
 
@@ -1314,7 +1318,7 @@ class SyntheticBasket1(Product):
         self.logger.print_numeric("buy_spread", buy_spread)
         self.logger.print_numeric("sell_spread", sell_spread)
 
-        if self.iter < self.converge_window:
+        if self.iter < self.converge_window or self.disable_pairs:
             self.on_timestep_end()
             return
 
@@ -1482,6 +1486,8 @@ class SyntheticBasket2(Product):
             "JAMS",
         ]
 
+        self.disable_pairs = config.get("disable_pairs")
+
         # Open and close position thresholds
         self.N = config.get("N")
         self.buy_entry = config.get("buy_entry")
@@ -1504,7 +1510,7 @@ class SyntheticBasket2(Product):
         )
 
         # Theoretical max is 62
-        self.max_basket_position = 62
+        self.max_basket_position = 50
         self.baskets_long = 0
         self.baskets_short = 0
 
@@ -1554,7 +1560,7 @@ class SyntheticBasket2(Product):
         self.logger.print_numeric("buy_spread", buy_spread)
         self.logger.print_numeric("sell_spread", sell_spread)
 
-        if self.iter < self.converge_window:
+        if self.iter < self.converge_window or self.disable_pairs:
             self.on_timestep_end()
             return
 
@@ -1709,8 +1715,8 @@ config_rainforest = {
     "mm_default_edge": 4,
     "mm_disregard_edge": 1,
     "mm_join_edge": 2,
-    "mm_join_volume": 3,
-    "mm_join_edge_2": 4,
+    "mm_join_volume": 1,
+    "mm_join_edge_2": 3,
     "mm_join_volume_2": 1,
 }
 
@@ -1751,6 +1757,7 @@ config_djembes = {}
 config_picnic_basket_1 = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market making parameters
+    "market_making": True,
     "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
@@ -1761,6 +1768,7 @@ config_picnic_basket_1 = {
 config_picnic_basket_2 = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market making parameters
+    "market_making": True,
     "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
@@ -1769,6 +1777,7 @@ config_picnic_basket_2 = {
 }
 
 config_synthetic_basket_1 = {
+    "disable_pairs": False,
     "N": 10,
     "buy_entry": 1.5,
     "buy_exit": 0.5,
@@ -1777,11 +1786,12 @@ config_synthetic_basket_1 = {
 }
 
 config_synthetic_basket_2 = {
-    "N": 60,
-    "buy_entry": 1.8,
-    "buy_exit": 0.2,
-    "sell_entry": 1.8,
-    "sell_exit": 0.2,
+    "disable_pairs": False,
+    "N": 85,
+    "buy_entry": 1.6,
+    "buy_exit": 0.4,
+    "sell_entry": 1.6,
+    "sell_exit": 0.4,
 }
 
 

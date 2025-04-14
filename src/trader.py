@@ -19,10 +19,8 @@ from utils import CustomLogger
 
 config_rainforest = {
     # Market taking parameters
-    "mt_bid_edge": 1,
-    "mt_ask_edge": 1,
-    "mt_long_pm": 0,
-    "mt_short_pm": 0,
+    "mt_take_edge": 1,
+    "mt_profit_margin": 1,
     # Market making parameters
     "mm_default_vol": 15,
     "mm_default_edge": 4,
@@ -31,14 +29,16 @@ config_rainforest = {
     "mm_join_volume": 1,
     "mm_join_edge_2": 3,
     "mm_join_volume_2": 1,
+    "mm_constrain_below_fair": True,
+    "mm_manage_position": False,
 }
 
 config_kelp = {
     # General
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market taking parameters
-    "mt_take_width": 1,
-    "mt_clear_width": 0,
+    "mt_take_edge": 1,
+    "mt_profit_margin": 0,
     "mt_adverse_volume": 15,  # Maximum mt volume
     # Market making parameters
     "mm_default_vol": 20,
@@ -46,6 +46,8 @@ config_kelp = {
     "mm_disregard_edge": 1,
     "mm_join_edge": 0,
     "mm_join_volume": 3,
+    "mm_constrain_below_fair": True,
+    "mm_manage_position": False,
 }
 
 config_squid = {
@@ -70,21 +72,27 @@ config_djembes = {}
 config_picnic_basket_1 = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market making parameters
+    "market_making": True,
     "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
     "mm_join_edge": 6,
     "mm_join_volume": 5,
+    "mm_constrain_below_fair": True,
+    "mm_manage_position": False,
 }
 
 config_picnic_basket_2 = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market making parameters
+    "market_making": True,
     "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
     "mm_join_edge": 6,
     "mm_join_volume": 5,
+    "mm_constrain_below_fair": True,
+    "mm_manage_position": False,
 }
 
 config_synthetic_basket_1 = {
@@ -96,28 +104,35 @@ config_synthetic_basket_1 = {
 }
 
 config_synthetic_basket_2 = {
-    "N": 60,
-    "buy_entry": 1.8,
-    "buy_exit": 0.2,
-    "sell_entry": 1.8,
-    "sell_exit": 0.2,
+    "N": 85,
+    "buy_entry": 1.6,
+    "buy_exit": 0.4,
+    "sell_entry": 1.6,
+    "sell_exit": 0.4,
 }
 
 
 class Trader:
-    def __init__(self):
-        self.logger = CustomLogger()
-
     def run(self, state: TradingState):
+        logger = CustomLogger()
+
         t1 = time()
 
-        self.logger.print("TRADER_B")
+        logger.print("TRADER_B")
         timestamp = state.timestamp
-        self.logger.print(f"timestamp {timestamp}")
+        logger.print_numeric("timestamp", timestamp)
+
+        PAIRS_PRODUCTS = [
+            "CROISSANTS",
+            "JAMS",
+            "DJEMBES",
+            "PICNIC_BASKET1",
+            "PICNIC_BASKET2",
+        ]
 
         result = {}
         if not state.traderData:
-            # -------------------Normal products -------------------
+            # -------------------Initialize Products-------------------
             products = {}
             products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
@@ -127,11 +142,14 @@ class Trader:
             products["DJEMBES"] = Djembes(config_djembes)
             products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
             products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
-            products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
-            products["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
+            # ------------------Synthetic Products-------------------
+            synthetic = {}
+            synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
+            synthetic["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
+            synthetic = traderData["synthetic"]
 
         for product in state.order_depths:
             if product in products.keys():
@@ -149,38 +167,16 @@ class Trader:
                 products[product].update_product(
                     order_depth, position, own_trades, timestamp
                 )
+
+                if product not in PAIRS_PRODUCTS:
+                    products[product].calculate_orders()
+
+        for product in synthetic.keys():
+            synthetic[product].calculate_orders(products, timestamp)
+
+        for product in PAIRS_PRODUCTS:
+            if product in products.keys():
                 products[product].calculate_orders()
-
-        DEPENDENT = {
-            "SYNTHETIC_BASKET1": ["PICNIC_BASKET1", "CROISSANTS", "JAMS", "DJEMBES"],
-            "SYNTHETIC_BASKET2": ["PICNIC_BASKET2", "CROISSANTS", "JAMS"],
-        }
-
-        for product in ["SYNTHETIC_BASKET1", "SYNTHETIC_BASKET2"]:
-            try:
-                if product in products:
-                    # Check that all dependencies exist
-
-                    missing_products = [
-                        p for p in DEPENDENT[product] if p not in products
-                    ]
-
-                    if not missing_products:
-                        products[product].calculate_orders(products, timestamp)
-                        # self.logger.print(
-                        #     f"Successfully calculated orders for {product}"
-                        # )
-                #     else:
-                #         self.logger.print(
-                #             f"Cannot calculate {product}, missing: {missing_products}"
-                #         )
-                # # else:
-                #     self.logger.print(
-                #         f"Warning: {product} not found in products dictionary"
-                #     )
-            except Exception as e:
-                # self.logger.print(f"Error processing {product}: {str(e)}")
-                pass
 
         for product in state.order_depths:
             if product in products.keys():
@@ -188,14 +184,15 @@ class Trader:
 
         traderData = dict()
         traderData["products"] = products
+        traderData["synthetic"] = synthetic
         traderData = jsonpickle.encode(traderData)
 
         conversions = 1
 
         t2 = time()
 
-        self.logger.print_numeric("runtime", t2 - t1)
-        self.logger.print("TRADER_E")
-        self.logger.flush()
+        logger.print_numeric("runtime", t2 - t1)
+        logger.print("TRADER_E")
+        logger.flush()
 
         return result, conversions, traderData
