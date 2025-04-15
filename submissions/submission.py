@@ -1,5 +1,5 @@
 # Combined Python Files
-# Files combined: market_utils.py, products.py, trader.py, utils.py
+# Files combined: algo_tools.py, autils.py, market_utils.py, products.py, trader.py
 
 # Import statements
 from abc import ABC, abstractmethod
@@ -22,6 +22,51 @@ import numpy as np
 
 
 
+# Code from algo_tools.py
+class WelfordStatsWithPriors:
+    def __init__(self, initial_mean=None, initial_variance=None, initial_count=None):
+        self.n = initial_count if initial_mean is not None else 0
+        self.mean = initial_mean if initial_mean is not None else 0.0
+        self.M2 = (
+            initial_variance * initial_count if initial_variance is not None else 0.0
+        )
+
+    def update(self, x):
+        self.n += 1
+        delta = x - self.mean
+        self.mean += delta / self.n
+        delta2 = x - self.mean
+        self.M2 += delta * delta2
+
+    def get_mean(self):
+        return self.mean
+
+    def get_std(self):
+        return (self.M2 / self.n if self.n > 1 else 1.0) ** 0.5
+
+# Code from autils.py
+class CustomLogger:
+    def __init__(self) -> None:
+        self.logs = ""
+        self.end = "\n"
+        self.sep = " "
+
+    def print(self, *objects: Any) -> None:
+        self.logs += self.sep.join(map(str, objects)) + self.end
+
+    def print_numeric(self, label, value, end="\n") -> None:
+        """Print a labeled numeric value with consistent formatting."""
+        if isinstance(value, float):
+            self.logs += f"{label} {value:.5f}"
+        else:
+            self.logs += f"{label} {value}"
+
+        self.logs += end
+
+    def flush(self):
+        print(self.logs)
+        self.logs = ""
+
 # Code from market_utils.py
 class OrderBook:
     def __init__(self):
@@ -30,20 +75,9 @@ class OrderBook:
         self.bid_prices = []
         self.bid_volumes = []
 
-        self.previous_ask_prices = []
-        self.previous_ask_volumes = []
-        self.previous_bid_prices = []
-        self.previous_bid_volumes = []
-
     def reset(self, order_depths):
         sell_orders = order_depths.sell_orders
         buy_orders = order_depths.buy_orders
-
-        # Save previous state
-        self.previous_ask_prices = deepcopy(self.ask_prices)
-        self.previous_ask_volumes = deepcopy(self.ask_volumes)
-        self.previous_bid_prices = deepcopy(self.bid_prices)
-        self.previous_bid_volumes = deepcopy(self.bid_volumes)
 
         # Reset order book
         sell_orders = list(sell_orders.items())
@@ -54,17 +88,13 @@ class OrderBook:
         self.bid_prices = [order[0] for order in buy_orders]
         self.bid_volumes = [order[1] for order in buy_orders]
 
-    def reset_to_previous(self):
-        self.ask_prices = deepcopy(self.previous_ask_prices)
-        self.ask_volumes = deepcopy(self.previous_ask_volumes)
-        self.bid_prices = deepcopy(self.previous_bid_prices)
-        self.bid_volumes = deepcopy(self.previous_bid_volumes)
-
     def check_if_no_orders(self):
-        if len(self.bid_prices) == 0 and len(self.ask_prices) == 0:
-            return True
-        else:
-            return False
+        return (
+            len(self.bid_prices) == 0
+            or len(self.ask_prices) == 0
+            or self.bid_volumes[0] == 0
+            or self.ask_volumes[0] == 0
+        )
 
     def get_best_bid(self):
         if len(self.bid_prices) == 0:
@@ -116,21 +146,21 @@ class OrderBook:
 
     @property
     def spread(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+        if self.check_if_no_orders():
             return None
         else:
             return self.ask_prices[0] - self.bid_prices[0]
 
     @property
     def mid_price(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+        if self.check_if_no_orders():
             return None
         else:
             return (self.ask_prices[0] + self.bid_prices[0]) / 2
 
     @property
     def vwap(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+        if self.check_if_no_orders():
             return None
         else:
             bid_vwap = sum(
@@ -199,63 +229,49 @@ class OrderBook:
 
         return total_bid_volume / total_ask_volume
 
-    def calculate_ofi(self):
-        if len(self.previous_ask_prices) == 0 or len(self.previous_bid_prices) == 0:
-            return 0
-        else:
-            total_bid_volume = sum(self.bid_volumes)
-            total_ask_volume = sum(self.ask_volumes)
-            total_bid_volume_prev = sum(self.previous_bid_volumes)
-            total_ask_volume_prev = sum(self.previous_ask_volumes)
-
-            delta_bid = total_bid_volume - total_bid_volume_prev
-            delta_ask = total_ask_volume - total_ask_volume_prev
-
-            return delta_bid - delta_ask
-
-    def update(self, order):
-        if order.quantity > 0:  # Buy order
-            if order.price in self.ask_prices:
-                index = self.ask_prices.index(order.price)
-                if self.ask_volumes[index] > order.quantity:
-                    self.ask_volumes[index] -= order.quantity
-                elif self.ask_volumes[index] < order.quantity:
+    def update(self, price, quantity):
+        if quantity > 0:  # Buy order
+            if price in self.ask_prices:
+                index = self.ask_prices.index(price)
+                if self.ask_volumes[index] > quantity:
+                    self.ask_volumes[index] -= quantity
+                elif self.ask_volumes[index] < quantity:
                     volumes = deepcopy(self.ask_volumes)
-                    self.bid_volumes.append(order.quantity - volumes[index])
-                    self.bid_prices.append(order.price)
+                    self.bid_volumes.append(quantity - volumes[index])
+                    self.bid_prices.append(price)
                     self.ask_prices.pop(index)
                     self.ask_volumes.pop(index)
                 else:
                     self.ask_prices.pop(index)
                     self.ask_volumes.pop(index)
             else:
-                if order.price in self.bid_prices:
-                    index = self.bid_prices.index(order.price)
-                    self.bid_volumes[index] += order.quantity
+                if price in self.bid_prices:
+                    index = self.bid_prices.index(price)
+                    self.bid_volumes[index] += quantity
                 else:
-                    self.bid_prices.append(order.price)
-                    self.bid_volumes.append(order.quantity)
+                    self.bid_prices.append(price)
+                    self.bid_volumes.append(quantity)
         else:  # Sell order
-            if order.price in self.bid_prices:
-                index = self.bid_prices.index(order.price)
-                if self.bid_volumes[index] > abs(order.quantity):
-                    self.bid_volumes[index] -= abs(order.quantity)
-                elif self.bid_volumes[index] < abs(order.quantity):
+            if price in self.bid_prices:
+                index = self.bid_prices.index(price)
+                if self.bid_volumes[index] > abs(quantity):
+                    self.bid_volumes[index] -= abs(quantity)
+                elif self.bid_volumes[index] < abs(quantity):
                     volumes = deepcopy(self.bid_volumes)
-                    self.ask_volumes.append(abs(order.quantity) - volumes[index])
-                    self.ask_prices.append(order.price)
+                    self.ask_volumes.append(abs(quantity) - volumes[index])
+                    self.ask_prices.append(price)
                     self.bid_prices.pop(index)
                     self.bid_volumes.pop(index)
                 else:
                     self.bid_prices.pop(index)
                     self.bid_volumes.pop(index)
             else:
-                if order.price in self.ask_prices:
-                    index = self.ask_prices.index(order.price)
-                    self.ask_volumes[index] += abs(order.quantity)
+                if price in self.ask_prices:
+                    index = self.ask_prices.index(price)
+                    self.ask_volumes[index] += abs(quantity)
                 else:
-                    self.ask_prices.append(order.price)
-                    self.ask_volumes.append(abs(order.quantity))
+                    self.ask_prices.append(price)
+                    self.ask_volumes.append(abs(quantity))
 
         # Sort the order book by price
         self.sell_orders = sorted(
@@ -321,13 +337,27 @@ class Product(ABC):
     symbol: str = None
     pos_limit: int = None
     order_book: OrderBook = None
+    logger: CustomLogger = None
     orders: list = None
     position: int = None
     remaining_buy: int = None
     remaining_sell: int = None
     timestamp: int = None
 
-    def __init__(self, config):
+    def __init__(self):
+        self.logger = CustomLogger()
+        self.order_book = OrderBook()
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if "logger" in state:
+            del state["logger"]
+        if "order_book" in state:
+            del state["order_book"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
         self.logger = CustomLogger()
         self.order_book = OrderBook()
 
@@ -339,45 +369,62 @@ class Product(ABC):
         self.logger.print(f"PRODUCT_E {self.symbol}")
         self.logger.flush()
 
-    def print_orders(self, orders):
-        for order in orders:
-            self.logger.print(f"order {order.quantity}@{order.price}")
+    def print_order(self, order):
+        self.logger.print(f"order {order.quantity}@{order.price}")
 
-    def place_order(self, price, quantity, type="MARKET", update_order_book=True):
+    def place_order(
+        self,
+        price,
+        quantity,
+        update_order_book=True,
+    ):
+        if update_order_book:
+            self.order_book.update(price, quantity)
+
+        if quantity > 0:  # Buy order
+            self.remaining_buy -= quantity
+            self.position += quantity
+        elif quantity < 0:  # Sell order (negative quantity)
+            self.remaining_sell += quantity
+            self.position -= quantity
+
         order = Order(self.symbol, price, quantity)
+        self.print_order(order)
         self.orders.append(order)
 
-        if update_order_book:
-            self.order_book.update(order)
-
-        # Updated position and remaining buy/sell volumes
-        if type == "MARKET":
-            if quantity > 0:  # Buy order
-                self.remaining_buy -= quantity
-                self.position += quantity
-            elif quantity < 0:  # Sell order (negative quantity)
-                self.remaining_sell += quantity
-                self.position -= quantity
-
     def on_timestep_end(self):
-        self.print_orders(self.orders)
         self.print_product_end()
-
         return self.orders
 
-    @abstractmethod
     def update_product(self, order_depths, position, own_trades, timestamp):
-        pass
+        self.print_product_begin(timestamp)
+        self.logger.print_numeric("position", position)
+
+        # Reset order book
+        self.order_book.reset(order_depths)
+
+        # Reset orders
+        self.orders = []
+
+        self.timestamp = timestamp
+
+        # Update position
+        self.position = position
+        self.remaining_buy = self.pos_limit - position
+        self.remaining_sell = self.pos_limit + position
+
+    def get_positions(self):
+        return self.position, self.remaining_buy, self.remaining_sell
 
     @abstractmethod
-    def calculate_orders():
+    def calculate_orders(self, manager):
         pass
 
 
 # ------------------RAINFOREST_RESIN-------------------#
 class RainforestResin(Product):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Rainforest Resin parameters
         self.name = "Rainforest Resin"
@@ -388,10 +435,8 @@ class RainforestResin(Product):
         self.fair_value = 10000
 
         # Market taking parameters
-        self.mt_bid_edge = config.get("mt_bid_edge")
-        self.mt_ask_edge = config.get("mt_ask_edge")
-        self.mt_long_profit_margin = config.get("mt_long_pm")
-        self.mt_short_profit_margin = config.get("mt_short_pm")
+        self.mt_take_edge = config.get("mt_take_edge")
+        self.mt_profit_margin = config.get("mt_profit_margin")
 
         # Market making parameters
         self.mm_default_vol = config.get("mm_default_vol")
@@ -401,24 +446,8 @@ class RainforestResin(Product):
         self.mm_join_volume = config.get("mm_join_volume")
         self.mm_join_edge_2 = config.get("mm_join_edge_2")
         self.mm_join_volume_2 = config.get("mm_join_volume_2")
-
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin(timestamp)
-        self.logger.print_numeric("position", position)
-
-        # Set timestamp
-        self.timestamp = timestamp
-
-        # Reset order book
-        self.order_book.reset(order_depths)
-
-        # Reset orders
-        self.orders = []
-
-        # Update position
-        self.position = position
-        self.remaining_buy = self.pos_limit - position
-        self.remaining_sell = self.pos_limit + position
+        self.mm_constrain_below_fair = config.get("mm_constrain_below_fair")
+        self.mm_manage_position = config.get("mm_manage_position")
 
     def market_take(self):
         ask_prices = self.order_book.get_ask_prices()
@@ -428,7 +457,7 @@ class RainforestResin(Product):
         for depth_level in range(ask_orders_depth):
             ask_price = ask_prices[depth_level]
             ask_volume = ask_volumes[depth_level]
-            if self.fair_value - ask_price >= self.mt_ask_edge:
+            if self.fair_value - ask_price >= self.mt_take_edge:
                 bid_price = ask_price
                 bid_volume = min(self.remaining_buy, ask_volume)
                 self.place_order(bid_price, bid_volume)
@@ -442,7 +471,7 @@ class RainforestResin(Product):
         for depth_level in range(bid_orders_depth):
             bid_price = bid_prices[depth_level]
             bid_volume = bid_volumes[depth_level]
-            if bid_price - self.fair_value >= self.mt_bid_edge:
+            if bid_price - self.fair_value >= self.mt_take_edge:
                 ask_price = bid_price
                 ask_volume = min(self.remaining_sell, bid_volume)
                 self.place_order(ask_price, -ask_volume)
@@ -458,7 +487,7 @@ class RainforestResin(Product):
             if self.position > 0:
                 bid_price = bid_prices[depth_level]
                 bid_volume = bid_volumes[depth_level]
-                if bid_price - self.fair_value >= self.mt_long_profit_margin:
+                if bid_price - self.fair_value >= self.mt_profit_margin:
                     qty = min(self.remaining_sell, bid_volume, self.position)
                     self.place_order(bid_price, -qty)
                 else:
@@ -474,7 +503,7 @@ class RainforestResin(Product):
             if self.position < 0:
                 ask_price = ask_prices[depth_level]
                 ask_volume = ask_volumes[depth_level]
-                if self.fair_value - ask_price >= self.mt_short_profit_margin:
+                if self.fair_value - ask_price >= self.mt_profit_margin:
                     qty = min(self.remaining_buy, ask_volume, abs(self.position))
                     self.place_order(ask_price, qty)
                 else:
@@ -531,6 +560,19 @@ class RainforestResin(Product):
             else:
                 bid_price = best_bid_below_fair + 1  # penny
 
+        if self.mm_manage_position:
+            if self.position > 0:
+                ask_price -= 1
+            elif self.position < 0:
+                bid_price += 1
+
+        if self.mm_constrain_below_fair:
+            if ask_price <= self.fair_value:
+                ask_price = self.fair_value + 1
+
+            if bid_price >= self.fair_value:
+                bid_price = self.fair_value - 1
+
         bid_price = round(bid_price)
         ask_price = round(ask_price)
 
@@ -539,10 +581,10 @@ class RainforestResin(Product):
 
         # Create the orders if they make sense
         if bid_volume > 0:
-            self.place_order(bid_price, bid_volume, "LIMIT")
+            self.place_order(bid_price, bid_volume)
 
         if ask_volume > 0:
-            self.place_order(ask_price, -ask_volume, "LIMIT")
+            self.place_order(ask_price, -ask_volume)
 
     def calculate_orders(self):
         # Liquidation
@@ -558,7 +600,7 @@ class RainforestResin(Product):
 # ------------------KELP-------------------#
 class Kelp(Product):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Kelp parameters
         self.name = "Kelp"
@@ -572,8 +614,8 @@ class Kelp(Product):
         self.last_fair_price = None
 
         # Market taking parameters
-        self.mt_take_width = config.get("mt_take_width")
-        self.mt_clear_width = config.get("mt_clear_width")
+        self.mt_take_edge = config.get("mt_take_edge")
+        self.mt_profit_margin = config.get("mt_profit_margin")
         self.mt_adverse_volume = config.get("mt_adverse_volume")
 
         # Market making parameters
@@ -582,21 +624,12 @@ class Kelp(Product):
         self.mm_default_edge = config.get("mm_default_edge")
         self.mm_join_edge = config.get("mm_join_edge")
         self.mm_join_volume = config.get("mm_join_volume")
+        self.mm_constrain_below_fair = config.get("mm_constrain_below_fair")
+        self.mm_manage_position = config.get("mm_manage_position")
 
     def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin(timestamp)
-        self.logger.print_numeric("position", position)
-
-        # Reset order book
-        self.order_book.reset(order_depths)
-
-        # Reset orders
-        self.orders = []
-
-        # Update position
-        self.position = position
-        self.remaining_buy = self.pos_limit - position
-        self.remaining_sell = self.pos_limit + position
+        # Update order book, reset orders and recalculate positions
+        super().update_product(order_depths, position, own_trades, timestamp)
 
         # --------------Price estimation------------------
         mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
@@ -613,7 +646,8 @@ class Kelp(Product):
             self.last_mm_price = mm_price
         self.logger.print_numeric("current_price", current_price)
 
-        self.fair_value = self.estimate_fair_value(current_price)
+        fair_value = self.estimate_fair_value(current_price)
+        self.fair_value = current_price if fair_value is None else fair_value
         self.logger.print_numeric("fair_value", self.fair_value)
 
     def estimate_fair_value(self, observed_price):
@@ -621,8 +655,8 @@ class Kelp(Product):
         if not hasattr(self, "kf_price"):
             self.kf_price = None  # Estimated state
             self.kf_variance = 1.0  # Uncertainty in the estimate
-            self.process_variance = 0.1  # How quickly the true price changes
-            self.measurement_variance = 0.1  # Noise in price observations
+            self.process_variance = 0.4  # How quickly the true price changes
+            self.measurement_variance = 0.0  # Noise in price observations
 
         if (
             len(self.order_book.ask_prices) != 0
@@ -664,7 +698,7 @@ class Kelp(Product):
         best_ask_above_fair = min(asks_above_fair) if len(asks_above_fair) > 0 else None
         best_bid_below_fair = max(bids_below_fair) if len(bids_below_fair) > 0 else None
 
-        ask = round(self.fair_value + self.mm_default_edge)
+        ask_price = round(self.fair_value + self.mm_default_edge)
         if best_ask_above_fair is not None:
             baaf_idx = self.order_book.ask_prices.index(best_ask_above_fair)
             best_ask_volume = self.order_book.ask_volumes[baaf_idx]
@@ -672,11 +706,11 @@ class Kelp(Product):
                 abs(best_ask_above_fair - self.fair_value) <= self.mm_join_edge
                 and best_ask_volume <= self.mm_join_volume
             ):
-                ask = best_ask_above_fair
+                ask_price = best_ask_above_fair
             else:
-                ask = best_ask_above_fair - 1
+                ask_price = best_ask_above_fair - 1
 
-        bid = round(self.fair_value - self.mm_default_edge)
+        bid_price = round(self.fair_value - self.mm_default_edge)
         if best_bid_below_fair is not None:
             bbbf_idx = self.order_book.bid_prices.index(best_bid_below_fair)
             best_bid_volume = self.order_book.bid_volumes[bbbf_idx]
@@ -684,23 +718,36 @@ class Kelp(Product):
                 abs(self.fair_value - best_bid_below_fair) <= self.mm_join_edge
                 and best_bid_volume <= self.mm_join_volume
             ):
-                bid = best_bid_below_fair
+                bid_price = best_bid_below_fair
 
             else:
-                bid = best_bid_below_fair + 1
+                bid_price = best_bid_below_fair + 1
 
-        bid_price = round(bid)
-        ask_price = round(ask)
+        if self.mm_manage_position:
+            if self.position > 0:
+                ask_price -= 1
+            elif self.position < 0:
+                bid_price += 1
+
+        if self.mm_constrain_below_fair:
+            if ask_price <= self.fair_value:
+                ask_price = self.fair_value + 1
+
+            if bid_price >= self.fair_value:
+                bid_price = self.fair_value - 1
+
+        bid_price = round(bid_price)
+        ask_price = round(ask_price)
 
         bid_volume = min(self.mm_default_vol, self.remaining_buy)
         ask_volume = min(self.mm_default_vol, self.remaining_sell)
 
         # Create the orders if they make sense
         if bid_volume > 0:
-            self.place_order(bid_price, bid_volume, "LIMIT")
+            self.place_order(bid_price, bid_volume)
 
         if ask_volume > 0:
-            self.place_order(ask_price, -ask_volume, "LIMIT")
+            self.place_order(ask_price, -ask_volume)
 
     def market_take(self):
         ask_prices = self.order_book.get_ask_prices()
@@ -711,7 +758,7 @@ class Kelp(Product):
             ask_price = ask_prices[depth_level]
             ask_volume = ask_volumes[depth_level]
             if ask_volume <= self.mt_adverse_volume:
-                if self.fair_value - ask_price >= self.mt_take_width:
+                if self.fair_value - ask_price >= self.mt_take_edge:
                     bid_price = ask_price
                     bid_volume = min(self.remaining_buy, ask_volume)
                     self.place_order(bid_price, bid_volume)
@@ -726,7 +773,7 @@ class Kelp(Product):
             bid_price = bid_prices[depth_level]
             bid_volume = bid_volumes[depth_level]
             if ask_volume <= self.mt_adverse_volume:
-                if bid_price - self.fair_value >= self.mt_take_width:
+                if bid_price - self.fair_value >= self.mt_take_edge:
                     ask_price = bid_price
                     ask_volume = min(self.remaining_sell, bid_volume)
                     self.place_order(bid_price, bid_volume)
@@ -744,7 +791,7 @@ class Kelp(Product):
                 bid_price = bid_prices[depth_level]
                 bid_volume = bid_volumes[depth_level]
                 if bid_volume <= self.mt_adverse_volume:
-                    if bid_price - self.fair_value >= self.mt_clear_width:
+                    if bid_price - self.fair_value >= self.mt_profit_margin:
                         qty = min(self.remaining_sell, bid_volume, self.position)
                         self.place_order(bid_price, -qty)
                     else:
@@ -761,7 +808,7 @@ class Kelp(Product):
                 ask_price = ask_prices[depth_level]
                 ask_volume = ask_volumes[depth_level]
                 if ask_volume <= self.mt_adverse_volume:
-                    if self.fair_value - ask_price >= self.mt_clear_width:
+                    if self.fair_value - ask_price >= self.mt_profit_margin:
                         qty = min(self.remaining_buy, ask_volume, abs(self.position))
                         self.place_order(ask_price, qty)
                     else:
@@ -783,7 +830,7 @@ class Kelp(Product):
 # ------------------Squid Ink-------------------#
 class Squid(Product):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Squid parameters
         self.name = "Squid Ink"
@@ -793,66 +840,104 @@ class Squid(Product):
         # Price estimation
         self.detect_mm_volume = config.get("detect_mm_volume")
         self.short_window = config.get("short_window")
-        self.short_history = deque(maxlen=self.short_window)
         self.long_window = config.get("long_window")
-        self.long_history = deque(maxlen=self.long_window)
         self.std_window = config.get("std_window")
-        self.std_history = deque(maxlen=self.std_window)
+
+        self.window_size = max(self.short_window, self.long_window, self.std_window)
+        self.history = deque(maxlen=self.window_size)
 
         # Directional trading
         self.dt_default_vol = config.get("dt_default_vol")
         self.dt_signal_strength = config.get("dt_signal_strength")
         self.dt_threshold_z = config.get("dt_threshold_z")
         self.z_close_threshold = config.get("z_close_threshold")
-        self.jump_delta = config.get("jump_delta")
+
+        # Price drop protection
+        self.price_drop_threshold = config.get(
+            "price_drop_threshold", 3.0
+        )  # Z-score threshold for drop detection
+        self.recovery_wait_period = config.get(
+            "recovery_wait_period", 10
+        )  # Number of iterations to wait
+        self.recovery_counter = 0  # Count iterations after drop detected
+        self.in_recovery_mode = False  # Flag to indicate we're in recovery mode
+        self.recovery_position_type = (
+            None  # Will be "long" or "short" depending on position during drop
+        )
+        self.recent_price_changes = deque(maxlen=5)  # Track recent price changes
+        self.prev_price = None  # Store previous price for change calculation
 
     def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin(timestamp)
-        self.logger.print_numeric("position", position)
-
-        # Set timestamp
-        self.timestamp = timestamp
-
-        # Reset order book
-        self.order_book.reset(order_depths)
-
-        # Reset orders
-        self.orders = []
-
-        # Update position
-        self.position = position
-        self.remaining_buy = self.pos_limit - position
-        self.remaining_sell = self.pos_limit + position
+        super().update_product(order_depths, position, own_trades, timestamp)
 
         # --------------Price estimation------------------
         mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
         self.logger.print_numeric("mm_price", mm_price)
         vwap = self.order_book.vwap
         self.logger.print_numeric("vwap", vwap)
+        mid_price = self.order_book.mid_price
+        self.logger.print_numeric("mid_price", mid_price)
+
+        # Calculate price change if we have history
+        if hasattr(self, "prev_price") and self.prev_price is not None:
+            if self.order_book.check_if_no_orders():
+                return
+            price_change = mid_price - self.prev_price
+            self.recent_price_changes.append(price_change)
+
+            # Detect sudden price movements if not already in recovery mode
+            if not self.in_recovery_mode and len(self.recent_price_changes) >= 3:
+                # Calculate standard deviation of recent changes
+                std_changes = np.std(list(self.recent_price_changes))
+                if std_changes > 0:
+                    # Calculate z-score of current price change
+                    current_change_z = price_change / std_changes
+
+                    # If large negative z-score while holding long positions
+                    # Or large positive z-score while holding short positions
+                    if (
+                        current_change_z < -self.price_drop_threshold
+                        and self.position > 0
+                    ) or (
+                        current_change_z > self.price_drop_threshold
+                        and self.position < 0
+                    ):
+                        self.in_recovery_mode = True
+                        self.recovery_counter = 0
+                        self.recovery_position_type = (
+                            "long" if self.position > 0 else "short"
+                        )
+        # Update recovery counter if in recovery mode
+        if self.in_recovery_mode:
+            self.recovery_counter += 1
+
+            # Check if recovery period is over
+            if self.recovery_counter >= self.recovery_wait_period:
+                self.in_recovery_mode = False
+                self.recovery_position_type = None
+                self.recovery_counter = 0
+
+        # Store current price for next update
+        self.prev_price = mid_price
 
         if mm_price is None:
-            current_price = self.order_book.vwap
+            self.fair_value = mid_price
         else:
-            current_price = mm_price
-
-        self.fair_value = current_price
+            self.fair_value = mm_price
         self.logger.print_numeric("fair_value", self.fair_value)
 
-        # Update all history windows
-        self.short_history.append(self.fair_value)
-        self.long_history.append(self.fair_value)
-        self.std_history.append(self.fair_value)
+        # Update history with the latest price
+        self.history.append(self.fair_value)
 
     def directional_trade(self):
         # Check if we have enough data points for all three moving averages
-        if (
-            len(self.long_history) >= self.long_window
-            and len(self.short_history) >= self.short_window
-            and len(self.std_history) >= self.std_window
-        ):
-            long_mean = sum(self.long_history) / self.long_window
-            short_mean = sum(self.short_history) / self.short_window
-            std = np.std(self.std_history)
+        if len(self.history) >= self.long_window:
+            price_history = list(self.history)
+
+            long_mean = np.mean(price_history[-self.long_window :])
+            short_mean = np.mean(price_history[-self.short_window :])
+            std = np.std(price_history[-self.std_window :])
+
             self.logger.print_numeric("long_mean", long_mean)
             self.logger.print_numeric("short_mean", short_mean)
             self.logger.print_numeric("std", std)
@@ -863,7 +948,25 @@ class Squid(Product):
             short_below_long = short_mean < long_mean
 
             # Check if we should close existing positions based on z_close_threshold
-            if abs(z_score) < self.z_close_threshold and self.position != 0:
+            # Only close positions if we're not in recovery mode OR
+            # if the position is opposite to the type of position we're protecting
+            should_close_position = (
+                abs(z_score) < self.z_close_threshold
+                and self.position != 0
+                and not (
+                    self.in_recovery_mode
+                    and (
+                        (
+                            self.recovery_position_type == "long" and self.position > 0
+                        )  # Protecting long positions
+                        or (
+                            self.recovery_position_type == "short" and self.position < 0
+                        )  # Protecting short positions
+                    )
+                )
+            )
+
+            if should_close_position:
                 # Close position logic
                 if self.position > 0:
                     # We have a long position to close
@@ -876,6 +979,14 @@ class Squid(Product):
                     bid_volume = min(abs(self.position), best_bid_volume)
                     self.place_order(best_bid_price, bid_volume)
                 return  # Exit after closing position
+
+            # If we're in recovery mode for a specific position type,
+            # don't initiate new positions of the same type
+            if self.in_recovery_mode:
+                if (self.recovery_position_type == "long" and short_below_long) or (
+                    self.recovery_position_type == "short" and not short_below_long
+                ):
+                    return
 
             if short_below_long:
                 # Long signal
@@ -921,7 +1032,7 @@ class Squid(Product):
 # -----------------Croissant-----------------#
 class Croissants(Product):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Croissant parameters
         self.name = "Croissants"
@@ -929,19 +1040,7 @@ class Croissants(Product):
         self.pos_limit = 250
 
     def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin(timestamp)
-        self.logger.print_numeric("position", position)
-
-        # Reset order book
-        self.order_book.reset(order_depths)
-
-        # Reset orders
-        self.orders = []
-
-        # Update position
-        self.position = position
-        self.remaining_buy = self.pos_limit - position
-        self.remaining_sell = self.pos_limit + position
+        super().update_product(order_depths, position, own_trades, timestamp)
 
     def calculate_orders(self):
         pass
@@ -950,7 +1049,7 @@ class Croissants(Product):
 # -----------------Jam-----------------#
 class Jams(Product):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Jam parameters
         self.name = "Jams"
@@ -958,19 +1057,7 @@ class Jams(Product):
         self.pos_limit = 350
 
     def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin(timestamp)
-        self.logger.print_numeric("position", position)
-
-        # Reset order book
-        self.order_book.reset(order_depths)
-
-        # Reset orders
-        self.orders = []
-
-        # Update position
-        self.position = position
-        self.remaining_buy = self.pos_limit - position
-        self.remaining_sell = self.pos_limit + position
+        super().update_product(order_depths, position, own_trades, timestamp)
 
     def calculate_orders(self):
         pass
@@ -979,7 +1066,7 @@ class Jams(Product):
 # -----------------Djembe-----------------#
 class Djembes(Product):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Djembe parameters
         self.name = "Djembes"
@@ -987,19 +1074,7 @@ class Djembes(Product):
         self.pos_limit = 60
 
     def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin(timestamp)
-        self.logger.print_numeric("position", position)
-
-        # Reset order book
-        self.order_book.reset(order_depths)
-
-        # Reset orders
-        self.orders = []
-
-        # Update position
-        self.position = position
-        self.remaining_buy = self.pos_limit - position
-        self.remaining_sell = self.pos_limit + position
+        super().update_product(order_depths, position, own_trades, timestamp)
 
     def calculate_orders(self):
         pass
@@ -1008,7 +1083,7 @@ class Djembes(Product):
 # -------------Picnic Basket 1 ----------------#
 class PicnicBasket1(Product):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Picnic Basket 1 parameters
         self.name = "Picnic Basket 1"
@@ -1025,21 +1100,11 @@ class PicnicBasket1(Product):
         self.mm_disregard_edge = config.get("mm_disregard_edge")
         self.mm_join_edge = config.get("mm_join_edge")
         self.mm_join_volume = config.get("mm_join_volume")
+        self.mm_constrain_below_fair = config.get("mm_constrain_below_fair")
+        self.mm_manage_position = config.get("mm_manage_position")
 
     def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin(timestamp)
-        self.logger.print_numeric("position", position)
-
-        # Reset order book
-        self.order_book.reset(order_depths)
-
-        # Reset orders
-        self.orders = []
-
-        # Update position
-        self.position = position
-        self.remaining_buy = self.pos_limit - position
-        self.remaining_sell = self.pos_limit + position
+        super().update_product(order_depths, position, own_trades, timestamp)
 
         # --------------Price estimation------------------
         mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
@@ -1070,7 +1135,7 @@ class PicnicBasket1(Product):
         baaf = min(asks_above_fair) if len(asks_above_fair) > 0 else None
         bbbf = max(bids_below_fair) if len(bids_below_fair) > 0 else None
 
-        ask = round(self.fair_value + self.mm_default_edge)
+        ask_price = round(self.fair_value + self.mm_default_edge)
         if baaf is not None:
             baaf_idx = self.order_book.ask_prices.index(baaf)
             best_ask_volume = self.order_book.ask_volumes[baaf_idx]
@@ -1078,11 +1143,11 @@ class PicnicBasket1(Product):
                 baaf - self.fair_value <= self.mm_join_edge
                 and best_ask_volume <= self.mm_join_volume
             ):
-                ask = baaf - 1
+                ask_price = baaf - 1
             else:
-                ask = baaf - 2
+                ask_price = baaf - 2
 
-        bid = round(self.fair_value - self.mm_default_edge)
+        bid_price = round(self.fair_value - self.mm_default_edge)
         if bbbf is not None:
             bbbf_idx = self.order_book.bid_prices.index(bbbf)
             best_bid_volume = self.order_book.bid_volumes[bbbf_idx]
@@ -1090,23 +1155,44 @@ class PicnicBasket1(Product):
                 abs(self.fair_value - bbbf) <= self.mm_join_edge
                 and best_bid_volume <= self.mm_join_volume
             ):
-                bid = bbbf + 1
+                bid_price = bbbf + 1
 
             else:
-                bid = bbbf + 2
+                bid_price = bbbf + 2
 
-        bid_price = round(bid)
-        ask_price = round(ask)
+        if self.mm_manage_position:
+            if self.position > 0:
+                ask_price -= 1
+            elif self.position < 0:
+                bid_price += 1
+
+        if self.mm_constrain_below_fair:
+            if ask_price <= self.fair_value:
+                ask_price = self.fair_value + 1
+            if bid_price >= self.fair_value:
+                bid_price = self.fair_value - 1
+
+        bid_price = round(bid_price)
+        ask_price = round(ask_price)
+
+        ob_best_bid, _ = self.order_book.get_best_bid()
+        ob_best_ask, _ = self.order_book.get_best_ask()
+
+        if bid_price >= ob_best_ask:
+            bid_price = ob_best_ask - 1
+
+        if ask_price <= ob_best_bid:
+            ask_price = ob_best_bid + 1
 
         bid_volume = min(self.mm_default_vol, self.remaining_buy)
         ask_volume = min(self.mm_default_vol, self.remaining_sell)
 
         # Create the orders if they make sense
         if bid_volume > 0:
-            self.place_order(bid_price, bid_volume, "LIMIT", update_order_book=False)
+            self.place_order(bid_price, bid_volume, update_order_book=False)
 
         if ask_volume > 0:
-            self.place_order(ask_price, -ask_volume, "LIMIT", update_order_book=False)
+            self.place_order(ask_price, -ask_volume, update_order_book=False)
 
     def calculate_orders(self):
         # Market making
@@ -1117,7 +1203,7 @@ class PicnicBasket1(Product):
 # -------------Picnic Basket 2 ----------------#
 class PicnicBasket2(Product):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Picnic Basket 2 parameters
         self.name = "Picnic Basket 2"
@@ -1134,21 +1220,11 @@ class PicnicBasket2(Product):
         self.mm_disregard_edge = config.get("mm_disregard_edge")
         self.mm_join_edge = config.get("mm_join_edge")
         self.mm_join_volume = config.get("mm_join_volume")
+        self.mm_constrain_below_fair = config.get("mm_constrain_below_fair")
+        self.mm_manage_position = config.get("mm_manage_position")
 
     def update_product(self, order_depths, position, own_trades, timestamp):
-        self.print_product_begin(timestamp)
-        self.logger.print_numeric("position", position)
-
-        # Reset order book
-        self.order_book.reset(order_depths)
-
-        # Reset orders
-        self.orders = []
-
-        # Update position
-        self.position = position
-        self.remaining_buy = self.pos_limit - position
-        self.remaining_sell = self.pos_limit + position
+        super().update_product(order_depths, position, own_trades, timestamp)
 
         # --------------Price estimation------------------
         mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
@@ -1179,7 +1255,7 @@ class PicnicBasket2(Product):
         baaf = min(asks_above_fair) if len(asks_above_fair) > 0 else None
         bbbf = max(bids_below_fair) if len(bids_below_fair) > 0 else None
 
-        ask = round(self.fair_value + self.mm_default_edge)
+        ask_price = round(self.fair_value + self.mm_default_edge)
         if baaf is not None:
             baaf_idx = self.order_book.ask_prices.index(baaf)
             best_ask_volume = self.order_book.ask_volumes[baaf_idx]
@@ -1187,11 +1263,11 @@ class PicnicBasket2(Product):
                 baaf - self.fair_value <= self.mm_join_edge
                 and best_ask_volume <= self.mm_join_volume
             ):
-                ask = baaf
+                ask_price = baaf
             else:
-                ask = baaf - 1
+                ask_price = baaf - 1
 
-        bid = round(self.fair_value - self.mm_default_edge)
+        bid_price = round(self.fair_value - self.mm_default_edge)
         if bbbf is not None:
             bbbf_idx = self.order_book.bid_prices.index(bbbf)
             best_bid_volume = self.order_book.bid_volumes[bbbf_idx]
@@ -1199,57 +1275,108 @@ class PicnicBasket2(Product):
                 abs(self.fair_value - bbbf) <= self.mm_join_edge
                 and best_bid_volume <= self.mm_join_volume
             ):
-                bid = bbbf
+                bid_price = bbbf
 
             else:
-                bid = bbbf + 1
+                bid_price = bbbf + 1
 
-        bid_price = round(bid)
-        ask_price = round(ask)
+        if self.mm_manage_position:
+            if self.position > 0:
+                ask_price -= 1
+            elif self.position < 0:
+                bid_price += 1
+
+        if self.mm_constrain_below_fair:
+            if ask_price <= self.fair_value:
+                ask_price = self.fair_value + 1
+            if bid_price >= self.fair_value:
+                bid_price = self.fair_value - 1
+
+        bid_price = round(bid_price)
+        ask_price = round(ask_price)
+
+        ob_best_bid, _ = self.order_book.get_best_bid()
+        ob_best_ask, _ = self.order_book.get_best_ask()
+
+        if bid_price >= ob_best_ask:
+            bid_price = ob_best_ask - 1
+
+        if ask_price <= ob_best_bid:
+            ask_price = ob_best_bid + 1
 
         bid_volume = min(self.mm_default_vol, self.remaining_buy)
         ask_volume = min(self.mm_default_vol, self.remaining_sell)
 
         # Create the orders if they make sense
         if bid_volume > 0:
-            self.place_order(bid_price, bid_volume, "LIMIT", update_order_book=False)
+            self.place_order(bid_price, bid_volume, update_order_book=False)
 
         if ask_volume > 0:
-            self.place_order(ask_price, -ask_volume, "LIMIT", update_order_book=False)
+            self.place_order(ask_price, -ask_volume, update_order_book=False)
 
     def calculate_orders(self):
         # Market making
         if self.enable_market_making:
             self.market_make()
 
+
+class SyntheticProduct:
+    def __init__(self):
+        self.logger = CustomLogger()
+
+    def print_product_begin(self, timestamp):
+        self.logger.print(f"PRODUCT_B {self.symbol}")
+        self.logger.print_numeric("timestamp", timestamp)
+
+    def print_product_end(self):
+        self.logger.print(f"PRODUCT_E {self.symbol}")
+        self.logger.flush()
+
+    def on_timestep_end(self):
+        self.print_product_end()
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if "logger" in state:
+            del state["logger"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.logger = CustomLogger()
+
+    @abstractmethod
+    def calculate_orders(self, products, timestamp):
         pass
 
 
-class SyntheticBasket1(Product):
+class SyntheticBasket1(SyntheticProduct):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Synthetic Basket 1 parameters
         self.name = "Synthetic Basket 1"
         self.symbol = "SYNTHETIC_BASKET1"
 
         # Constituent products
-        self.composition = ["PICNIC_BASKET1", "CROISSANTS", "JAMS", "DJEMBES"]
-
-        self.disable_pairs = config.get("disable_pairs")
+        self.constituents = ["PICNIC_BASKET1", "CROISSANTS", "JAMS", "DJEMBES"]
+        self.pb1_ratio = 1
+        self.crois_ratio = 6
+        self.jams_ratio = 3
+        self.djembe_ratio = 1
 
         # Open and close position thresholds
-        self.N = config.get("N")
         self.buy_entry = config.get("buy_entry")
         self.buy_exit = config.get("buy_exit")
         self.sell_entry = config.get("sell_entry")
         self.sell_exit = config.get("sell_exit")
 
         # Price tracking
-        self.BUY_SPREAD_MEAN = 60.08
-        self.BUY_SPREAD_VAR = 7246.50
-        self.SELL_SPREAD_MEAN = 37.44
-        self.SELL_SPREAD_VAR = 7250.25
+        self.N = config.get("N")
+        self.BUY_SPREAD_MEAN = 72.04
+        self.BUY_SPREAD_VAR = 7434.64
+        self.SELL_SPREAD_MEAN = 49.45
+        self.SELL_SPREAD_VAR = 7439.19
 
         self.buy_spread_stats = WelfordStatsWithPriors(
             self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
@@ -1259,17 +1386,12 @@ class SyntheticBasket1(Product):
         )
 
         # Theoretical max is 41
-        self.max_basket_position = 35
+        self.max_basket_position = 41
         self.baskets_long = 0
         self.baskets_short = 0
 
-        self.converge_window = 50
+        self.converge_window = 25
         self.iter = 0
-
-        self.orders = []
-
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        pass
 
     def calculate_orders(self, products, timestamp):
         self.print_product_begin(timestamp)
@@ -1278,38 +1400,43 @@ class SyntheticBasket1(Product):
         self.timestamp = timestamp
         self.iter += 1
 
-        for constituent in self.composition:
+        for constituent in self.constituents:
             if constituent not in products.keys():
                 return
             if products[constituent].order_book.check_if_no_orders():
                 return
 
         pb1 = products["PICNIC_BASKET1"]
-        croissants = products["CROISSANTS"]
-        jams = products["JAMS"]
-        djembes = products["DJEMBES"]
-
         pb1_ask_price, pb1_ask_volume = pb1.order_book.get_best_ask()
         pb1_bid_price, pb1_bid_volume = pb1.order_book.get_best_bid()
+        pb1_pos, pb1_remaining_buy, pb1_remaining_sell = pb1.get_positions()
 
-        croissants_ask_price, croissants_ask_volume = (
-            croissants.order_book.get_best_ask()
-        )
-        croissants_bid_price, croissants_bid_volume = (
-            croissants.order_book.get_best_bid()
-        )
+        crois = products["CROISSANTS"]
+        crois_ask_price, crois_ask_volume = crois.order_book.get_best_ask()
+        crois_bid_price, crois_bid_volume = crois.order_book.get_best_bid()
+        crois_pos, crois_remaining_buy, crois_remaining_sell = crois.get_positions()
 
+        jams = products["JAMS"]
         jams_ask_price, jams_ask_volume = jams.order_book.get_best_ask()
         jams_bid_price, jams_bid_volume = jams.order_book.get_best_bid()
+        jams_pos, jams_remaining_buy, jams_remaining_sell = jams.get_positions()
 
+        djembes = products["DJEMBES"]
         djembes_ask_price, djembes_ask_volume = djembes.order_book.get_best_ask()
         djembes_bid_price, djembes_bid_volume = djembes.order_book.get_best_bid()
-
-        buy_spread = pb1_ask_price - (
-            6 * croissants_bid_price + 3 * jams_bid_price + djembes_bid_price
+        djembes_pos, djembes_remaining_buy, djembes_remaining_sell = (
+            djembes.get_positions()
         )
-        sell_spread = pb1_bid_price - (
-            6 * croissants_ask_price + 3 * jams_ask_price + djembes_ask_price
+
+        buy_spread = self.pb1_ratio * pb1_ask_price - (
+            self.crois_ratio * crois_bid_price
+            + self.jams_ratio * jams_bid_price
+            + self.djembe_ratio * djembes_bid_price
+        )
+        sell_spread = self.pb1_ratio * pb1_bid_price - (
+            self.crois_ratio * crois_ask_price
+            + self.jams_ratio * jams_ask_price
+            + self.djembe_ratio * djembes_ask_price
         )
 
         self.buy_spread_stats.update(buy_spread)
@@ -1318,56 +1445,59 @@ class SyntheticBasket1(Product):
         self.logger.print_numeric("buy_spread", buy_spread)
         self.logger.print_numeric("sell_spread", sell_spread)
 
-        if self.iter < self.converge_window or self.disable_pairs:
+        if self.iter < self.converge_window:
             self.on_timestep_end()
             return
 
         # BASKET BUY STRATEGY (Long PB1, Short Components)
         # Calculate max basket units based on position limits
-        # How many complete baskets can we trade?
         basket_buy_limits = [
-            pb1.remaining_buy,  # Each basket needs 1 PB1
-            croissants.remaining_sell // 6,  # Each basket needs to short 6 Croissants
-            jams.remaining_sell // 3,  # Each basket needs to short 3 Jams
-            djembes.remaining_sell,  # Each basket needs to short 1 Djembe
+            pb1_remaining_buy // self.pb1_ratio,
+            crois_remaining_sell // self.crois_ratio,
+            jams_remaining_sell // self.jams_ratio,
+            djembes_remaining_sell // self.djembe_ratio,
         ]
 
         # Calculate max basket units based on available market liquidity
         liquidity_buy_limits = [
-            pb1_ask_volume,  # Can only buy what's available
-            croissants_bid_volume // 6,  # Can only sell what someone's willing to buy
-            jams_bid_volume // 3,
-            djembes_bid_volume,
+            pb1_ask_volume // self.pb1_ratio,
+            crois_bid_volume // self.crois_ratio,
+            jams_bid_volume // self.jams_ratio,
+            djembes_bid_volume // self.djembe_ratio,
         ]
         max_baskets_buy = min(min(basket_buy_limits), min(liquidity_buy_limits))
 
         # BASKET SELL STRATEGY (Short PB1, Long Components)
         # Calculate max basket units based on position limits
         basket_sell_limits = [
-            pb1.remaining_sell,  # Each basket needs to short 1 PB1
-            croissants.remaining_buy // 6,  # Each basket needs to buy 6 Croissants
-            jams.remaining_buy // 3,  # Each basket needs to buy 3 Jams
-            djembes.remaining_buy,  # Each basket needs to buy 1 Djembe
+            pb1_remaining_sell // self.pb1_ratio,
+            crois_remaining_buy // self.crois_ratio,
+            jams_remaining_buy // self.jams_ratio,
+            djembes_remaining_buy // self.djembe_ratio,
         ]
 
         # Calculate max basket units based on available market liquidity
         liquidity_sell_limits = [
-            pb1_bid_volume,  # Can only sell what someone's willing to buy
-            croissants_ask_volume // 6,  # Can only buy what's available
-            jams_ask_volume // 3,
-            djembes_ask_volume,
+            pb1_bid_volume // self.pb1_ratio,
+            crois_ask_volume // self.crois_ratio,
+            jams_ask_volume // self.jams_ratio,
+            djembes_ask_volume // self.djembe_ratio,
         ]
 
         # The limiting factor is the minimum of both constraints
         max_baskets_sell = min(min(basket_sell_limits), min(liquidity_sell_limits))
 
+        # buy_std = self.BUY_SPREAD_VAR**0.5
         buy_std = self.buy_spread_stats.get_std()
         buy_mean = self.BUY_SPREAD_MEAN
+        # buy_mean = self.buy_spread_stats.get_mean()
         z_score_buy = (buy_spread - buy_mean) / buy_std
         self.logger.print_numeric("z_score_buy", z_score_buy)
 
         sell_std = self.sell_spread_stats.get_std()
-        sell_mean = self.SELL_SPREAD_MEAN
+        # sell_std = self.SELL_SPREAD_VAR**0.5  # self.sell_spread_stats.get_std()
+        # sell_mean = self.sell_spread_stats.get_mean()
+        sell_mean = self.SELL_SPREAD_MEAN  # self.sell_spread_stats.get_mean()
         z_score_sell = (sell_spread - sell_mean) / sell_std
         self.logger.print_numeric("z_score_sell", z_score_sell)
 
@@ -1381,15 +1511,14 @@ class SyntheticBasket1(Product):
 
             # Calculate exact volumes while respecting the basket ratio
             if new_baskets > 0:
-                pb1_buy_volume = new_baskets
-                croissants_sell_volume = new_baskets * 6
-                jams_sell_volume = new_baskets * 3
-                djembes_sell_volume = new_baskets
+                pb1_buy_volume = new_baskets * self.pb1_ratio
+                croissants_sell_volume = new_baskets * self.crois_ratio
+                jams_sell_volume = new_baskets * self.jams_ratio
+                djembes_sell_volume = new_baskets * self.djembe_ratio
 
                 # Place orders
-                pb1.orders = []
                 pb1.place_order(pb1_ask_price, pb1_buy_volume)
-                croissants.place_order(croissants_bid_price, -croissants_sell_volume)
+                crois.place_order(crois_bid_price, -croissants_sell_volume)
                 jams.place_order(jams_bid_price, -jams_sell_volume)
                 djembes.place_order(djembes_bid_price, -djembes_sell_volume)
 
@@ -1405,15 +1534,14 @@ class SyntheticBasket1(Product):
             baskets_to_unwind = min(max_baskets_sell, self.baskets_long)
 
             if baskets_to_unwind > 0:
-                pb1_sell_volume = baskets_to_unwind
-                croissants_buy_volume = baskets_to_unwind * 6
-                jams_buy_volume = baskets_to_unwind * 3
-                djembes_buy_volume = baskets_to_unwind
+                pb1_sell_volume = baskets_to_unwind * self.pb1_ratio
+                croissants_buy_volume = baskets_to_unwind * self.crois_ratio
+                jams_buy_volume = baskets_to_unwind * self.jams_ratio
+                djembes_buy_volume = baskets_to_unwind * self.djembe_ratio
 
                 # Place orders
-                pb1.orders = []
                 pb1.place_order(pb1_bid_price, -pb1_sell_volume)
-                croissants.place_order(croissants_ask_price, croissants_buy_volume)
+                crois.place_order(crois_ask_price, croissants_buy_volume)
                 jams.place_order(jams_ask_price, jams_buy_volume)
                 djembes.place_order(djembes_ask_price, djembes_buy_volume)
 
@@ -1429,15 +1557,14 @@ class SyntheticBasket1(Product):
             new_baskets = min(max_baskets_sell, available_for_new_positions)
 
             if new_baskets > 0:
-                pb1_sell_volume = new_baskets
-                croissants_buy_volume = new_baskets * 6
-                jams_buy_volume = new_baskets * 3
-                djembes_buy_volume = new_baskets
+                pb1_sell_volume = new_baskets * self.pb1_ratio
+                croissants_buy_volume = new_baskets * self.crois_ratio
+                jams_buy_volume = new_baskets * self.jams_ratio
+                djembes_buy_volume = new_baskets * self.djembe_ratio
 
                 # Place orders
-                pb1.orders = []
                 pb1.place_order(pb1_bid_price, -pb1_sell_volume)
-                croissants.place_order(croissants_ask_price, croissants_buy_volume)
+                crois.place_order(crois_ask_price, croissants_buy_volume)
                 jams.place_order(jams_ask_price, jams_buy_volume)
                 djembes.place_order(djembes_ask_price, djembes_buy_volume)
 
@@ -1452,15 +1579,14 @@ class SyntheticBasket1(Product):
             baskets_to_unwind = min(max_baskets_buy, self.baskets_short)
 
             if baskets_to_unwind:
-                pb1_buy_volume = baskets_to_unwind
-                croissants_sell_volume = baskets_to_unwind * 6
-                jams_sell_volume = baskets_to_unwind * 3
-                djembes_sell_volume = baskets_to_unwind
+                pb1_buy_volume = baskets_to_unwind * self.pb1_ratio
+                croissants_sell_volume = baskets_to_unwind * self.crois_ratio
+                jams_sell_volume = baskets_to_unwind * self.jams_ratio
+                djembes_sell_volume = baskets_to_unwind * self.djembe_ratio
 
                 # Place orders
-                pb1.orders = []
                 pb1.place_order(pb1_ask_price, pb1_buy_volume)
-                croissants.place_order(croissants_bid_price, -croissants_sell_volume)
+                crois.place_order(crois_bid_price, -croissants_sell_volume)
                 jams.place_order(jams_bid_price, -jams_sell_volume)
                 djembes.place_order(djembes_bid_price, -djembes_sell_volume)
 
@@ -1471,9 +1597,9 @@ class SyntheticBasket1(Product):
 
 
 # Synthetic Basket 1
-class SyntheticBasket2(Product):
+class SyntheticBasket2(SyntheticProduct):
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
 
         # Synthetic Basket 1 parameters
         self.name = "Synthetic Basket 2"
@@ -1485,6 +1611,9 @@ class SyntheticBasket2(Product):
             "CROISSANTS",
             "JAMS",
         ]
+        self.pb2_ratio = 1
+        self.crois_ratio = 4
+        self.jams_ratio = 2
 
         self.disable_pairs = config.get("disable_pairs")
 
@@ -1497,10 +1626,10 @@ class SyntheticBasket2(Product):
 
         # Price tracking
         self.converge_window = 25
-        self.BUY_SPREAD_MEAN = 39.32
-        self.BUY_SPREAD_VAR = 3667.70
-        self.SELL_SPREAD_MEAN = 26.01
-        self.SELL_SPREAD_VAR = 3668.32
+        self.BUY_SPREAD_MEAN = 38.09
+        self.BUY_SPREAD_VAR = 3426.40
+        self.SELL_SPREAD_MEAN = 24.81
+        self.SELL_SPREAD_VAR = 3426.43
 
         self.buy_spread_stats = WelfordStatsWithPriors(
             self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
@@ -1510,17 +1639,12 @@ class SyntheticBasket2(Product):
         )
 
         # Theoretical max is 62
-        self.max_basket_position = 50
+        self.max_basket_position = 62
         self.baskets_long = 0
         self.baskets_short = 0
 
-        self.converge_window = 50
+        self.converge_window = 25
         self.iter = 0
-
-        self.orders = []
-
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        pass
 
     def calculate_orders(self, products, timestamp):
         self.print_product_begin(timestamp)
@@ -1535,24 +1659,26 @@ class SyntheticBasket2(Product):
                 return
 
         pb2 = products["PICNIC_BASKET2"]
-        croissants = products["CROISSANTS"]
-        jams = products["JAMS"]
-
         pb2_ask_price, pb2_ask_volume = pb2.order_book.get_best_ask()
         pb2_bid_price, pb2_bid_volume = pb2.order_book.get_best_bid()
+        pb2_pos, pb2_remaining_buy, pb2_remaining_sell = pb2.get_positions()
 
-        croissants_ask_price, croissants_ask_volume = (
-            croissants.order_book.get_best_ask()
-        )
-        croissants_bid_price, croissants_bid_volume = (
-            croissants.order_book.get_best_bid()
-        )
+        crois = products["CROISSANTS"]
+        crois_ask_price, crois_ask_volume = crois.order_book.get_best_ask()
+        crois_bid_price, crois_bid_volume = crois.order_book.get_best_bid()
+        crois_pos, crois_remaining_buy, crois_remaining_sell = crois.get_positions()
 
+        jams = products["JAMS"]
         jams_ask_price, jams_ask_volume = jams.order_book.get_best_ask()
         jams_bid_price, jams_bid_volume = jams.order_book.get_best_bid()
+        jams_pos, jams_remaining_buy, jams_remaining_sell = jams.get_positions()
 
-        buy_spread = pb2_ask_price - (4 * croissants_bid_price + 2 * jams_bid_price)
-        sell_spread = pb2_bid_price - (4 * croissants_ask_price + 2 * jams_ask_price)
+        buy_spread = self.pb2_ratio * pb2_ask_price - (
+            self.crois_ratio * crois_bid_price + self.jams_ratio * jams_bid_price
+        )
+        sell_spread = self.pb2_ratio * pb2_bid_price - (
+            self.crois_ratio * crois_ask_price + self.jams_ratio * jams_ask_price
+        )
 
         self.buy_spread_stats.update(buy_spread)
         self.sell_spread_stats.update(sell_spread)
@@ -1566,46 +1692,49 @@ class SyntheticBasket2(Product):
 
         # BASKET BUY STRATEGY (Long PB2, Short Components)
         # Calculate max basket units based on position limits
-        # How many complete baskets can we trade?
         basket_buy_limits = [
-            pb2.remaining_buy,  # Each basket needs 1 PB2
-            croissants.remaining_sell // 4,  # Each basket needs to short 4 Croissants
-            jams.remaining_sell // 2,  # Each basket needs to short 2 Jams
+            pb2_remaining_buy // self.pb2_ratio,
+            crois_remaining_sell // self.crois_ratio,
+            jams_remaining_sell // self.jams_ratio,
         ]
 
         # Calculate max basket units based on available market liquidity
         liquidity_buy_limits = [
-            pb2_ask_volume,  # Can only buy what's available
-            croissants_bid_volume // 4,  # Can only sell what someone's willing to buy
-            jams_bid_volume // 2,
+            pb2_ask_volume // self.pb2_ratio,
+            crois_bid_volume // self.crois_ratio,
+            jams_bid_volume // self.jams_ratio,
         ]
         max_baskets_buy = min(min(basket_buy_limits), min(liquidity_buy_limits))
 
         # BASKET SELL STRATEGY (Short PB2, Long Components)
         # Calculate max basket units based on position limits
         basket_sell_limits = [
-            pb2.remaining_sell,  # Each basket needs to short 1 PB2
-            croissants.remaining_buy // 4,  # Each basket needs to buy 6 Croissants
-            jams.remaining_buy // 2,  # Each basket needs to buy 3 Jams
+            pb2_remaining_sell // self.pb2_ratio,
+            crois_remaining_buy // self.crois_ratio,
+            jams_remaining_buy // self.jams_ratio,
         ]
 
         # Calculate max basket units based on available market liquidity
         liquidity_sell_limits = [
-            pb2_bid_volume,  # Can only sell what someone's willing to buy
-            croissants_ask_volume // 4,  # Can only buy what's available
-            jams_ask_volume // 2,
+            pb2_bid_volume // self.pb2_ratio,
+            crois_ask_volume // self.crois_ratio,
+            jams_ask_volume // self.jams_ratio,
         ]
 
         # The limiting factor is the minimum of both constraints
         max_baskets_sell = min(min(basket_sell_limits), min(liquidity_sell_limits))
 
+        # buy_std = self.BUY_SPREAD_VAR**0.5
         buy_std = self.buy_spread_stats.get_std()
         buy_mean = self.BUY_SPREAD_MEAN
+        # buy_mean = self.buy_spread_stats.get_mean()
         z_score_buy = (buy_spread - buy_mean) / buy_std
         self.logger.print_numeric("z_score_buy", z_score_buy)
 
         sell_std = self.sell_spread_stats.get_std()
-        sell_mean = self.SELL_SPREAD_MEAN
+        # sell_std = self.SELL_SPREAD_VAR**0.5  # self.sell_spread_stats.get_std()
+        # sell_mean = self.sell_spread_stats.get_mean()
+        sell_mean = self.SELL_SPREAD_MEAN  # self.sell_spread_stats.get_mean()
         z_score_sell = (sell_spread - sell_mean) / sell_std
         self.logger.print_numeric("z_score_sell", z_score_sell)
 
@@ -1619,14 +1748,13 @@ class SyntheticBasket2(Product):
 
             # Calculate exact volumes while respecting the basket ratio
             if new_baskets > 0:
-                pb2_buy_volume = new_baskets
-                croissants_sell_volume = new_baskets * 4
-                jams_sell_volume = new_baskets * 2
+                pb2_buy_volume = new_baskets * self.pb2_ratio
+                croissants_sell_volume = new_baskets * self.crois_ratio
+                jams_sell_volume = new_baskets * self.jams_ratio
 
                 # Place orders
-                pb2.orders = []
                 pb2.place_order(pb2_ask_price, pb2_buy_volume)
-                croissants.place_order(croissants_bid_price, -croissants_sell_volume)
+                crois.place_order(crois_bid_price, -croissants_sell_volume)
                 jams.place_order(jams_bid_price, -jams_sell_volume)
 
                 self.baskets_long += new_baskets
@@ -1642,14 +1770,13 @@ class SyntheticBasket2(Product):
             baskets_to_unwind = min(max_baskets_sell, self.baskets_long)
 
             if baskets_to_unwind > 0:
-                pb2_sell_volume = baskets_to_unwind
-                croissants_buy_volume = baskets_to_unwind * 4
-                jams_buy_volume = baskets_to_unwind * 2
+                pb2_sell_volume = baskets_to_unwind * self.pb2_ratio
+                croissants_buy_volume = baskets_to_unwind * self.crois_ratio
+                jams_buy_volume = baskets_to_unwind * self.jams_ratio
 
                 # Place orders
-                pb2.orders = []
                 pb2.place_order(pb2_bid_price, -pb2_sell_volume)
-                croissants.place_order(croissants_ask_price, croissants_buy_volume)
+                crois.place_order(crois_ask_price, croissants_buy_volume)
                 jams.place_order(jams_ask_price, jams_buy_volume)
 
                 self.baskets_long -= baskets_to_unwind
@@ -1665,18 +1792,16 @@ class SyntheticBasket2(Product):
             new_baskets = min(max_baskets_sell, available_for_new_positions)
 
             if new_baskets > 0:
-                pb2_sell_volume = new_baskets
-                croissants_buy_volume = new_baskets * 4
-                jams_buy_volume = new_baskets * 2
+                pb2_sell_volume = new_baskets * self.pb2_ratio
+                croissants_buy_volume = new_baskets * self.crois_ratio
+                jams_buy_volume = new_baskets * self.jams_ratio
 
                 # Place orders
-                pb2.orders = []
                 pb2.place_order(pb2_bid_price, -pb2_sell_volume)
-                croissants.place_order(croissants_ask_price, croissants_buy_volume)
+                crois.place_order(crois_ask_price, croissants_buy_volume)
                 jams.place_order(jams_ask_price, jams_buy_volume)
 
                 self.baskets_short += new_baskets
-
                 self.logger.print_numeric("sell_spread_open", sell_spread)
         elif (
             z_score_sell <= self.sell_exit
@@ -1687,29 +1812,354 @@ class SyntheticBasket2(Product):
             baskets_to_unwind = min(max_baskets_buy, self.baskets_short)
 
             if baskets_to_unwind:
-                pb2_buy_volume = baskets_to_unwind
-                croissants_sell_volume = baskets_to_unwind * 4
-                jams_sell_volume = baskets_to_unwind * 2
+                pb2_buy_volume = baskets_to_unwind * self.pb2_ratio
+                croissants_sell_volume = baskets_to_unwind * self.crois_ratio
+                jams_sell_volume = baskets_to_unwind * self.jams_ratio
 
                 # Place orders
-                pb2.orders = []
                 pb2.place_order(pb2_ask_price, pb2_buy_volume)
-                croissants.place_order(croissants_bid_price, -croissants_sell_volume)
+                crois.place_order(crois_bid_price, -croissants_sell_volume)
                 jams.place_order(jams_bid_price, -jams_sell_volume)
 
                 self.baskets_short -= baskets_to_unwind
-
                 self.logger.print_numeric("sell_spread_close", sell_spread)
 
         self.on_timestep_end()
 
+
+class VolcanicRock(Product):
+    def __init__(self, config):
+        super().__init__()
+
+        # Squid parameters
+        self.name = "Volcanic Rock"
+        self.symbol = "VOLCANIC_ROCK"
+        self.pos_limit = 400
+
+        # Price estimation
+        self.short_window = config.get("short_window")
+        self.long_window = config.get("long_window")
+        self.std_window = config.get("std_window")
+
+        self.window_size = max(self.short_window, self.long_window, self.std_window)
+        self.history = deque(maxlen=self.window_size)
+
+        # Directional trading
+        self.dt_default_vol = config.get("dt_default_vol")
+        self.dt_signal_strength = config.get("dt_signal_strength")
+        self.dt_threshold_z = config.get("dt_threshold_z")
+        self.z_close_threshold = config.get("z_close_threshold")
+
+        # Price drop protection
+        self.price_drop_threshold = config.get(
+            "price_drop_threshold", 3.0
+        )  # Z-score threshold for drop detection
+        self.recovery_wait_period = config.get(
+            "recovery_wait_period", 10
+        )  # Number of iterations to wait
+        self.recovery_counter = 0  # Count iterations after drop detected
+        self.in_recovery_mode = False  # Flag to indicate we're in recovery mode
+        self.recovery_position_type = (
+            None  # Will be "long" or "short" depending on position during drop
+        )
+        self.recent_price_changes = deque(maxlen=5)  # Track recent price changes
+        self.prev_price = None  # Store previous price for change calculation
+
+        self.no_orders = False
+
+    def update_product(self, order_depths, position, own_trades, timestamp):
+        super().update_product(order_depths, position, own_trades, timestamp)
+
+        if self.order_book.check_if_no_orders():
+            self.no_orders = True
+            return
+        else:
+            self.no_orders = False
+
+        # --------------Price estimation------------------
+        vwap = self.order_book.vwap
+        self.logger.print_numeric("vwap", vwap)
+        mid_price = self.order_book.mid_price
+        self.logger.print_numeric("mid_price", mid_price)
+
+        # Calculate price change if we have history
+        if hasattr(self, "prev_price") and self.prev_price is not None:
+            price_change = mid_price - self.prev_price
+            self.recent_price_changes.append(price_change)
+
+            # Detect sudden price movements if not already in recovery mode
+            if not self.in_recovery_mode and len(self.recent_price_changes) >= 3:
+                # Calculate standard deviation of recent changes
+                std_changes = np.std(list(self.recent_price_changes))
+                if std_changes > 0:
+                    # Calculate z-score of current price change
+                    current_change_z = price_change / std_changes
+
+                    # If large negative z-score while holding long positions
+                    # Or large positive z-score while holding short positions
+                    if (
+                        current_change_z < -self.price_drop_threshold
+                        and self.position > 0
+                    ) or (
+                        current_change_z > self.price_drop_threshold
+                        and self.position < 0
+                    ):
+                        self.in_recovery_mode = True
+                        self.recovery_counter = 0
+                        self.recovery_position_type = (
+                            "long" if self.position > 0 else "short"
+                        )
+        # Update recovery counter if in recovery mode
+        if self.in_recovery_mode:
+            self.recovery_counter += 1
+
+            # Check if recovery period is over
+            if self.recovery_counter >= self.recovery_wait_period:
+                self.in_recovery_mode = False
+                self.recovery_position_type = None
+                self.recovery_counter = 0
+
+        # Store current price for next update
+        self.prev_price = mid_price
+
+        self.fair_value = vwap
+        self.logger.print_numeric("fair_value", self.fair_value)
+
+        # Update history with the latest price
+        self.history.append(self.fair_value)
+
+    def directional_trade(self):
+        # Check if we have enough data points for all three moving averages
+        if len(self.history) >= self.long_window:
+            price_history = list(self.history)
+
+            long_mean = np.mean(price_history[-self.long_window :])
+            short_mean = np.mean(price_history[-self.short_window :])
+            std = np.std(price_history[-self.std_window :])
+
+            self.logger.print_numeric("long_mean", long_mean)
+            self.logger.print_numeric("short_mean", short_mean)
+            self.logger.print_numeric("std", std)
+
+            z_score = abs(short_mean - long_mean) / std
+            self.logger.print_numeric("z_score", z_score)
+
+            short_below_long = short_mean < long_mean
+
+            # Check if we should close existing positions based on z_close_threshold
+            # Only close positions if we're not in recovery mode OR
+            # if the position is opposite to the type of position we're protecting
+            should_close_position = (
+                abs(z_score) < self.z_close_threshold
+                and self.position != 0
+                and not (
+                    self.in_recovery_mode
+                    and (
+                        (
+                            self.recovery_position_type == "long" and self.position > 0
+                        )  # Protecting long positions
+                        or (
+                            self.recovery_position_type == "short" and self.position < 0
+                        )  # Protecting short positions
+                    )
+                )
+            )
+
+            if should_close_position:
+                # Close position logic
+                if self.position > 0:
+                    # We have a long position to close
+                    best_ask_price, best_ask_volume = self.order_book.get_best_bid()
+                    ask_volume = min(abs(self.position), best_ask_volume)
+                    self.place_order(best_ask_price, -ask_volume)
+                elif self.position < 0:
+                    # We have a short position to close
+                    best_bid_price, best_bid_volume = self.order_book.get_best_ask()
+                    bid_volume = min(abs(self.position), best_bid_volume)
+                    self.place_order(best_bid_price, bid_volume)
+                return  # Exit after closing position
+
+            # If we're in recovery mode for a specific position type,
+            # don't initiate new positions of the same type
+            if self.in_recovery_mode:
+                if (self.recovery_position_type == "long" and short_below_long) or (
+                    self.recovery_position_type == "short" and not short_below_long
+                ):
+                    return
+
+            if short_below_long:
+                # Long signal
+                if self.position >= 0:
+                    z_score_threshold = self.dt_threshold_z
+                    bid_volume = min(
+                        self.dt_default_vol,
+                        self.remaining_buy,
+                    )
+                else:
+                    z_score_threshold = 0
+                    bid_volume = min(self.remaining_buy, abs(self.position))
+
+                if z_score > z_score_threshold and self.remaining_buy > 0:
+                    best_bid_price, best_bid_volume = self.order_book.get_best_ask()
+                    bid_price = best_bid_price
+                    bid_volume = min(bid_volume, best_bid_volume)
+                    self.place_order(bid_price, bid_volume)
+
+            elif not short_below_long:
+                # Short signal
+                if self.position <= 0:
+                    z_score_threshold = self.dt_threshold_z
+                    ask_volume = min(
+                        self.dt_default_vol,
+                        self.remaining_sell,
+                    )
+                else:
+                    z_score_threshold = 0
+                    ask_volume = min(self.remaining_sell, self.position)
+
+                if self.remaining_sell > 0 and z_score > z_score_threshold:
+                    best_ask_price, best_ask_volume = self.order_book.get_best_bid()
+                    ask_price = best_ask_price
+                    ask_volume = min(ask_volume, best_ask_volume)
+                    self.place_order(ask_price, -ask_volume)
+
+    def calculate_orders(self):
+        # Directional trading
+        if not self.no_orders:
+            self.directional_trade()
+
+
+class Volcanic9500(VolcanicRock):
+    def __init__(self, config):
+        super().__init__(config)
+        self.name = "Volcanic 9500"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_9500"
+        self.pos_limit = 200
+
+
+class Volcanic9750(VolcanicRock):
+    def __init__(self, config):
+        super().__init__(config)
+        self.name = "Volcanic 9750"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_9750"
+        self.pos_limit = 200
+
+
+class Volcanic10000(VolcanicRock):
+    def __init__(self, config):
+        super().__init__(config)
+        self.name = "Volcanic 10000"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_10000"
+        self.pos_limit = 200
+
+
+class Volcanic10250(Product):
+    def __init__(self, config):
+        super().__init__()
+        self.name = "Volcanic 10250"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_10250"
+        self.pos_limit = 200
+
+        self.total_bought = 0  # Total volume bought
+        self.total_cost = 0  # Total cost of all purchases
+        self.avg_price = 0  # Weighted average price
+
+        self.saturated = False
+
+    def calculate_orders(self):
+        if self.remaining_buy > 0 and not self.saturated:
+            if self.order_book.check_if_no_orders():
+                return
+            best_ask_price, best_ask_volume = self.order_book.get_best_ask()
+            bid_price = best_ask_price
+            bid_volume = min(best_ask_volume, self.remaining_buy)
+            self.place_order(bid_price, bid_volume)
+
+            # Update the total volume and cost
+            self.total_cost += bid_price * bid_volume
+            self.total_bought += bid_volume
+
+            # Calculate the new weighted average price
+            if self.total_bought > 0:
+                self.avg_price = self.total_cost / self.total_bought
+
+        else:
+            self.saturated = True
+
+        if self.saturated and self.remaining_sell > 0:
+            if self.order_book.check_if_no_orders():
+                return
+            # Check if the average price is above the max profit factor
+            best_bid_price, best_bid_volume = self.order_book.get_best_bid()
+
+            if self.timestamp < 500000:
+                max_profit_factor = 3
+            else:
+                max_profit_factor = 1.5
+
+            if self.avg_price * max_profit_factor < best_bid_price:
+                ask_volume = min(
+                    best_bid_volume, self.remaining_sell, abs(self.position)
+                )
+                self.place_order(best_bid_price, -ask_volume)
+
+
+class Volcanic10500(Product):
+    def __init__(self, config):
+        super().__init__()
+        self.name = "Volcanic 10500"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_10500"
+        self.pos_limit = 200
+
+        self.total_bought = 0  # Total volume bought
+        self.total_cost = 0  # Total cost of all purchases
+        self.avg_price = 0  # Weighted average price
+
+        self.saturated = False
+
+    def calculate_orders(self):
+        if self.remaining_buy > 0 and not self.saturated:
+            if self.order_book.check_if_no_orders():
+                return
+            best_ask_price, best_ask_volume = self.order_book.get_best_ask()
+            bid_price = best_ask_price
+            bid_volume = min(best_ask_volume, self.remaining_buy)
+            self.place_order(bid_price, bid_volume)
+
+            # Update the total volume and cost
+            self.total_cost += bid_price * bid_volume
+            self.total_bought += bid_volume
+
+            # Calculate the new weighted average price
+            if self.total_bought > 0:
+                self.avg_price = self.total_cost / self.total_bought
+
+        else:
+            self.saturated = True
+
+        if self.saturated and self.remaining_sell > 0:
+            # Check if the average price is above the max profit factor
+            if self.order_book.check_if_no_orders():
+                return
+
+            best_bid_price, best_bid_volume = self.order_book.get_best_bid()
+
+            if self.timestamp < 500000:
+                max_profit_factor = 10
+            else:
+                max_profit_factor = 5
+
+            if self.avg_price * max_profit_factor < best_bid_price:
+                ask_volume = min(
+                    best_bid_volume, self.remaining_sell, abs(self.position)
+                )
+                self.place_order(best_bid_price, -ask_volume)
+
 # Code from trader.py
 config_rainforest = {
     # Market taking parameters
-    "mt_bid_edge": 1,
-    "mt_ask_edge": 1,
-    "mt_long_pm": 0,
-    "mt_short_pm": 0,
+    "mt_take_edge": 1,
+    "mt_profit_margin": 1,
     # Market making parameters
     "mm_default_vol": 15,
     "mm_default_edge": 4,
@@ -1718,34 +2168,40 @@ config_rainforest = {
     "mm_join_volume": 1,
     "mm_join_edge_2": 3,
     "mm_join_volume_2": 1,
+    "mm_constrain_below_fair": True,
+    "mm_manage_position": False,
 }
 
 config_kelp = {
     # General
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market taking parameters
-    "mt_take_width": 1,
-    "mt_clear_width": 0,
+    "mt_take_edge": 1,
+    "mt_profit_margin": 0.5,
     "mt_adverse_volume": 15,  # Maximum mt volume
     # Market making parameters
     "mm_default_vol": 20,
     "mm_default_edge": 1,
     "mm_disregard_edge": 1,
-    "mm_join_edge": 0,
+    "mm_join_edge": 2,
     "mm_join_volume": 3,
+    "mm_constrain_below_fair": True,
+    "mm_manage_position": True,
 }
 
 config_squid = {
     # General
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Price estimation
-    "short_window": 90,
-    "long_window": 410,
-    "std_window": 500,
+    "short_window": 70,
+    "long_window": 510,
+    "std_window": 290,
     # Directional parameters
-    "dt_default_vol": 5,
-    "dt_threshold_z": 1.0,
-    "z_close_threshold": 0.1,
+    "dt_default_vol": 10,
+    "dt_threshold_z": 0.9,
+    "z_close_threshold": 0.15,
+    "price_drop_threshold": 3,
+    "recovery_wait_period": 5,
 }
 
 config_croissants = {}
@@ -1755,60 +2211,147 @@ config_jams = {}
 config_djembes = {}
 
 config_picnic_basket_1 = {
-    "detect_mm_volume": 15,  # Volume to detect market maker
+    "detect_mm_volume": 20,  # Volume to detect market maker
     # Market making parameters
-    "market_making": True,
+    "market_making": False,
     "mm_default_vol": 10,
     "mm_default_edge": 4,
     "mm_disregard_edge": 2,
     "mm_join_edge": 6,
     "mm_join_volume": 5,
+    "mm_constrain_below_fair": True,
+    "mm_manage_position": False,
 }
 
 config_picnic_basket_2 = {
-    "detect_mm_volume": 15,  # Volume to detect market maker
+    "detect_mm_volume": 20,  # Volume to detect market maker
     # Market making parameters
-    "market_making": True,
-    "mm_default_vol": 10,
+    "market_making": False,
+    "mm_default_vol": 15,
     "mm_default_edge": 4,
-    "mm_disregard_edge": 2,
+    "mm_disregard_edge": 1,
     "mm_join_edge": 6,
     "mm_join_volume": 5,
+    "mm_constrain_below_fair": True,
+    "mm_manage_position": True,
 }
 
 config_synthetic_basket_1 = {
-    "disable_pairs": False,
     "N": 10,
-    "buy_entry": 1.5,
-    "buy_exit": 0.5,
-    "sell_entry": 1.5,
-    "sell_exit": 0.5,
+    "buy_entry": 1.6,
+    "buy_exit": 0.25,
+    "sell_entry": 1.6,
+    "sell_exit": 0.25,
 }
 
 config_synthetic_basket_2 = {
-    "disable_pairs": False,
-    "N": 85,
+    "N": 100,
     "buy_entry": 1.6,
-    "buy_exit": 0.4,
+    "buy_exit": 0.2,
     "sell_entry": 1.6,
-    "sell_exit": 0.4,
+    "sell_exit": 0.2,
+}
+
+config_volcanic = {
+    # Price estimation
+    "short_window": 100,
+    "long_window": 500,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.7,
+    "z_close_threshold": 0.1,
+    "price_drop_threshold": 2,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_9500 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 510,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.7,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_9750 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 510,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.8,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_10000 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 510,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.8,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_10250 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 500,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.8,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_10500 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 500,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.8,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
 }
 
 
 class Trader:
-    def __init__(self):
-        self.logger = CustomLogger()
-
     def run(self, state: TradingState):
+        logger = CustomLogger()
+
         t1 = time()
 
-        self.logger.print("TRADER_B")
+        logger.print("TRADER_B")
         timestamp = state.timestamp
-        self.logger.print(f"timestamp {timestamp}")
+        logger.print_numeric("timestamp", timestamp)
+
+        PAIRS_PRODUCTS = [
+            "CROISSANTS",
+            "JAMS",
+            "DJEMBES",
+            "PICNIC_BASKET1",
+            "PICNIC_BASKET2",
+        ]
 
         result = {}
         if not state.traderData:
-            # -------------------Normal products -------------------
+            # -------------------Initialize Products-------------------
             products = {}
             products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
             products["KELP"] = Kelp(config_kelp)
@@ -1818,11 +2361,26 @@ class Trader:
             products["DJEMBES"] = Djembes(config_djembes)
             products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
             products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
-            products["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
-            products["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
+            products["VOLCANIC_ROCK"] = VolcanicRock(config_volcanic)
+            products["VOLCANIC_ROCK_VOUCHER_9500"] = Volcanic9500(config_volcanic_9500)
+            products["VOLCANIC_ROCK_VOUCHER_9750"] = Volcanic9750(config_volcanic_9750)
+            products["VOLCANIC_ROCK_VOUCHER_10000"] = Volcanic10000(
+                config_volcanic_10000
+            )
+            products["VOLCANIC_ROCK_VOUCHER_10250"] = Volcanic10250(
+                config_volcanic_10250
+            )
+            products["VOLCANIC_ROCK_VOUCHER_10500"] = Volcanic10500(
+                config_volcanic_10500
+            )
+            # ------------------Synthetic Products-------------------
+            synthetic = {}
+            synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
+            synthetic["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
+            synthetic = traderData["synthetic"]
 
         for product in state.order_depths:
             if product in products.keys():
@@ -1840,38 +2398,16 @@ class Trader:
                 products[product].update_product(
                     order_depth, position, own_trades, timestamp
                 )
+
+                if product not in PAIRS_PRODUCTS:
+                    products[product].calculate_orders()
+
+        for product in synthetic.keys():
+            synthetic[product].calculate_orders(products, timestamp)
+
+        for product in PAIRS_PRODUCTS:
+            if product in products.keys():
                 products[product].calculate_orders()
-
-        DEPENDENT = {
-            "SYNTHETIC_BASKET1": ["PICNIC_BASKET1", "CROISSANTS", "JAMS", "DJEMBES"],
-            "SYNTHETIC_BASKET2": ["PICNIC_BASKET2", "CROISSANTS", "JAMS"],
-        }
-
-        for product in ["SYNTHETIC_BASKET1", "SYNTHETIC_BASKET2"]:
-            try:
-                if product in products:
-                    # Check that all dependencies exist
-
-                    missing_products = [
-                        p for p in DEPENDENT[product] if p not in products
-                    ]
-
-                    if not missing_products:
-                        products[product].calculate_orders(products, timestamp)
-                        # self.logger.print(
-                        #     f"Successfully calculated orders for {product}"
-                        # )
-                #     else:
-                #         self.logger.print(
-                #             f"Cannot calculate {product}, missing: {missing_products}"
-                #         )
-                # # else:
-                #     self.logger.print(
-                #         f"Warning: {product} not found in products dictionary"
-                #     )
-            except Exception as e:
-                # self.logger.print(f"Error processing {product}: {str(e)}")
-                pass
 
         for product in state.order_depths:
             if product in products.keys():
@@ -1879,59 +2415,15 @@ class Trader:
 
         traderData = dict()
         traderData["products"] = products
+        traderData["synthetic"] = synthetic
         traderData = jsonpickle.encode(traderData)
 
         conversions = 1
 
         t2 = time()
 
-        self.logger.print_numeric("runtime", t2 - t1)
-        self.logger.print("TRADER_E")
-        self.logger.flush()
+        logger.print_numeric("runtime", t2 - t1)
+        logger.print("TRADER_E")
+        logger.flush()
 
         return result, conversions, traderData
-
-# Code from utils.py
-class CustomLogger:
-    def __init__(self) -> None:
-        self.logs = ""
-        self.end = "\n"
-        self.sep = " "
-
-    def print(self, *objects: Any) -> None:
-        self.logs += self.sep.join(map(str, objects)) + self.end
-
-    def print_numeric(self, label, value, end="\n") -> None:
-        """Print a labeled numeric value with consistent formatting."""
-        if isinstance(value, float):
-            self.logs += f"{label} {value:.5f}"
-        else:
-            self.logs += f"{label} {value}"
-
-        self.logs += end
-
-    def flush(self):
-        print(self.logs)
-        self.logs = ""
-
-
-class WelfordStatsWithPriors:
-    def __init__(self, initial_mean=None, initial_variance=None, initial_count=None):
-        self.n = initial_count if initial_mean is not None else 0
-        self.mean = initial_mean if initial_mean is not None else 0.0
-        self.M2 = (
-            initial_variance * initial_count if initial_variance is not None else 0.0
-        )
-
-    def update(self, x):
-        self.n += 1
-        delta = x - self.mean
-        self.mean += delta / self.n
-        delta2 = x - self.mean
-        self.M2 += delta * delta2
-
-    def get_mean(self):
-        return self.mean
-
-    def get_std(self):
-        return np.sqrt(self.M2 / self.n if self.n > 1 else 1.0)

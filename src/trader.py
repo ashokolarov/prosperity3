@@ -2,6 +2,7 @@ from time import time
 
 import jsonpickle
 
+from autils import CustomLogger
 from datamodel import TradingState
 from products import (
     Croissants,
@@ -14,8 +15,13 @@ from products import (
     Squid,
     SyntheticBasket1,
     SyntheticBasket2,
+    Volcanic9500,
+    Volcanic9750,
+    Volcanic10000,
+    Volcanic10250,
+    Volcanic10500,
+    VolcanicRock,
 )
-from utils import CustomLogger
 
 config_rainforest = {
     # Market taking parameters
@@ -38,29 +44,31 @@ config_kelp = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market taking parameters
     "mt_take_edge": 1,
-    "mt_profit_margin": 0,
+    "mt_profit_margin": 0.5,
     "mt_adverse_volume": 15,  # Maximum mt volume
     # Market making parameters
     "mm_default_vol": 20,
     "mm_default_edge": 1,
     "mm_disregard_edge": 1,
-    "mm_join_edge": 0,
+    "mm_join_edge": 2,
     "mm_join_volume": 3,
     "mm_constrain_below_fair": True,
-    "mm_manage_position": False,
+    "mm_manage_position": True,
 }
 
 config_squid = {
     # General
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Price estimation
-    "short_window": 90,
-    "long_window": 410,
-    "std_window": 500,
+    "short_window": 70,
+    "long_window": 510,
+    "std_window": 290,
     # Directional parameters
-    "dt_default_vol": 5,
-    "dt_threshold_z": 1.0,
-    "z_close_threshold": 0.1,
+    "dt_default_vol": 10,
+    "dt_threshold_z": 0.9,
+    "z_close_threshold": 0.15,
+    "price_drop_threshold": 3,
+    "recovery_wait_period": 5,
 }
 
 config_croissants = {}
@@ -86,29 +94,107 @@ config_picnic_basket_2 = {
     "detect_mm_volume": 20,  # Volume to detect market maker
     # Market making parameters
     "market_making": False,
-    "mm_default_vol": 10,
+    "mm_default_vol": 15,
     "mm_default_edge": 4,
-    "mm_disregard_edge": 2,
+    "mm_disregard_edge": 1,
     "mm_join_edge": 6,
     "mm_join_volume": 5,
     "mm_constrain_below_fair": True,
-    "mm_manage_position": False,
+    "mm_manage_position": True,
 }
 
 config_synthetic_basket_1 = {
     "N": 10,
-    "buy_entry": 1.5,
-    "buy_exit": 0.5,
-    "sell_entry": 1.5,
-    "sell_exit": 0.5,
+    "buy_entry": 1.6,
+    "buy_exit": 0.25,
+    "sell_entry": 1.6,
+    "sell_exit": 0.25,
 }
 
 config_synthetic_basket_2 = {
-    "N": 85,
+    "N": 100,
     "buy_entry": 1.6,
-    "buy_exit": 0.4,
+    "buy_exit": 0.2,
     "sell_entry": 1.6,
-    "sell_exit": 0.4,
+    "sell_exit": 0.2,
+}
+
+config_volcanic = {
+    # Price estimation
+    "short_window": 100,
+    "long_window": 500,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.7,
+    "z_close_threshold": 0.1,
+    "price_drop_threshold": 2,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_9500 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 510,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.7,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_9750 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 510,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.8,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_10000 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 510,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.8,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_10250 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 500,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.8,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
+}
+
+config_volcanic_10500 = {
+    # Price estimation
+    "short_window": 90,
+    "long_window": 500,
+    "std_window": 140,
+    # Directional parameters
+    "dt_default_vol": 100,
+    "dt_threshold_z": 0.8,
+    "z_close_threshold": 0.2,
+    "price_drop_threshold": 2.0,
+    "recovery_wait_period": 5,
 }
 
 
@@ -142,6 +228,18 @@ class Trader:
             products["DJEMBES"] = Djembes(config_djembes)
             products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
             products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
+            products["VOLCANIC_ROCK"] = VolcanicRock(config_volcanic)
+            products["VOLCANIC_ROCK_VOUCHER_9500"] = Volcanic9500(config_volcanic_9500)
+            products["VOLCANIC_ROCK_VOUCHER_9750"] = Volcanic9750(config_volcanic_9750)
+            products["VOLCANIC_ROCK_VOUCHER_10000"] = Volcanic10000(
+                config_volcanic_10000
+            )
+            products["VOLCANIC_ROCK_VOUCHER_10250"] = Volcanic10250(
+                config_volcanic_10250
+            )
+            products["VOLCANIC_ROCK_VOUCHER_10500"] = Volcanic10500(
+                config_volcanic_10500
+            )
             # ------------------Synthetic Products-------------------
             synthetic = {}
             synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)

@@ -22,10 +22,12 @@ class OrderBook:
         self.bid_volumes = [order[1] for order in buy_orders]
 
     def check_if_no_orders(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
-            return True
-        else:
-            return False
+        return (
+            len(self.bid_prices) == 0
+            or len(self.ask_prices) == 0
+            or self.bid_volumes[0] == 0
+            or self.ask_volumes[0] == 0
+        )
 
     def get_best_bid(self):
         if len(self.bid_prices) == 0:
@@ -77,21 +79,21 @@ class OrderBook:
 
     @property
     def spread(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+        if self.check_if_no_orders():
             return None
         else:
             return self.ask_prices[0] - self.bid_prices[0]
 
     @property
     def mid_price(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+        if self.check_if_no_orders():
             return None
         else:
             return (self.ask_prices[0] + self.bid_prices[0]) / 2
 
     @property
     def vwap(self):
-        if len(self.bid_prices) == 0 or len(self.ask_prices) == 0:
+        if self.check_if_no_orders():
             return None
         else:
             bid_vwap = sum(

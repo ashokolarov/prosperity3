@@ -4,9 +4,9 @@ from collections import deque
 import numpy as np
 
 from algo_tools import WelfordStatsWithPriors
+from autils import CustomLogger
 from datamodel import Order
 from market_utils import OrderBook
-from utils import CustomLogger
 
 
 class Product(ABC):
@@ -19,6 +19,7 @@ class Product(ABC):
     position: int = None
     remaining_buy: int = None
     remaining_sell: int = None
+    timestamp: int = None
 
     def __init__(self):
         self.logger = CustomLogger()
@@ -81,6 +82,8 @@ class Product(ABC):
 
         # Reset orders
         self.orders = []
+
+        self.timestamp = timestamp
 
         # Update position
         self.position = position
@@ -329,8 +332,8 @@ class Kelp(Product):
         if not hasattr(self, "kf_price"):
             self.kf_price = None  # Estimated state
             self.kf_variance = 1.0  # Uncertainty in the estimate
-            self.process_variance = 0.1  # How quickly the true price changes
-            self.measurement_variance = 0.1  # Noise in price observations
+            self.process_variance = 0.4  # How quickly the true price changes
+            self.measurement_variance = 0.0  # Noise in price observations
 
         if (
             len(self.order_book.ask_prices) != 0
@@ -514,18 +517,32 @@ class Squid(Product):
         # Price estimation
         self.detect_mm_volume = config.get("detect_mm_volume")
         self.short_window = config.get("short_window")
-        self.short_history = deque(maxlen=self.short_window)
         self.long_window = config.get("long_window")
-        self.long_history = deque(maxlen=self.long_window)
         self.std_window = config.get("std_window")
-        self.std_history = deque(maxlen=self.std_window)
+
+        self.window_size = max(self.short_window, self.long_window, self.std_window)
+        self.history = deque(maxlen=self.window_size)
 
         # Directional trading
         self.dt_default_vol = config.get("dt_default_vol")
         self.dt_signal_strength = config.get("dt_signal_strength")
         self.dt_threshold_z = config.get("dt_threshold_z")
         self.z_close_threshold = config.get("z_close_threshold")
-        self.jump_delta = config.get("jump_delta")
+
+        # Price drop protection
+        self.price_drop_threshold = config.get(
+            "price_drop_threshold", 3.0
+        )  # Z-score threshold for drop detection
+        self.recovery_wait_period = config.get(
+            "recovery_wait_period", 10
+        )  # Number of iterations to wait
+        self.recovery_counter = 0  # Count iterations after drop detected
+        self.in_recovery_mode = False  # Flag to indicate we're in recovery mode
+        self.recovery_position_type = (
+            None  # Will be "long" or "short" depending on position during drop
+        )
+        self.recent_price_changes = deque(maxlen=5)  # Track recent price changes
+        self.prev_price = None  # Store previous price for change calculation
 
     def update_product(self, order_depths, position, own_trades, timestamp):
         super().update_product(order_depths, position, own_trades, timestamp)
@@ -535,30 +552,69 @@ class Squid(Product):
         self.logger.print_numeric("mm_price", mm_price)
         vwap = self.order_book.vwap
         self.logger.print_numeric("vwap", vwap)
+        mid_price = self.order_book.mid_price
+        self.logger.print_numeric("mid_price", mid_price)
+
+        # Calculate price change if we have history
+        if hasattr(self, "prev_price") and self.prev_price is not None:
+            if self.order_book.check_if_no_orders():
+                return
+            price_change = mid_price - self.prev_price
+            self.recent_price_changes.append(price_change)
+
+            # Detect sudden price movements if not already in recovery mode
+            if not self.in_recovery_mode and len(self.recent_price_changes) >= 3:
+                # Calculate standard deviation of recent changes
+                std_changes = np.std(list(self.recent_price_changes))
+                if std_changes > 0:
+                    # Calculate z-score of current price change
+                    current_change_z = price_change / std_changes
+
+                    # If large negative z-score while holding long positions
+                    # Or large positive z-score while holding short positions
+                    if (
+                        current_change_z < -self.price_drop_threshold
+                        and self.position > 0
+                    ) or (
+                        current_change_z > self.price_drop_threshold
+                        and self.position < 0
+                    ):
+                        self.in_recovery_mode = True
+                        self.recovery_counter = 0
+                        self.recovery_position_type = (
+                            "long" if self.position > 0 else "short"
+                        )
+        # Update recovery counter if in recovery mode
+        if self.in_recovery_mode:
+            self.recovery_counter += 1
+
+            # Check if recovery period is over
+            if self.recovery_counter >= self.recovery_wait_period:
+                self.in_recovery_mode = False
+                self.recovery_position_type = None
+                self.recovery_counter = 0
+
+        # Store current price for next update
+        self.prev_price = mid_price
 
         if mm_price is None:
-            current_price = self.order_book.vwap
+            self.fair_value = mid_price
         else:
-            current_price = mm_price
-
-        self.fair_value = current_price
+            self.fair_value = mm_price
         self.logger.print_numeric("fair_value", self.fair_value)
 
-        # Update all history windows
-        self.short_history.append(self.fair_value)
-        self.long_history.append(self.fair_value)
-        self.std_history.append(self.fair_value)
+        # Update history with the latest price
+        self.history.append(self.fair_value)
 
     def directional_trade(self):
         # Check if we have enough data points for all three moving averages
-        if (
-            len(self.long_history) >= self.long_window
-            and len(self.short_history) >= self.short_window
-            and len(self.std_history) >= self.std_window
-        ):
-            long_mean = sum(self.long_history) / self.long_window
-            short_mean = sum(self.short_history) / self.short_window
-            std = np.std(self.std_history)
+        if len(self.history) >= self.long_window:
+            price_history = list(self.history)
+
+            long_mean = np.mean(price_history[-self.long_window :])
+            short_mean = np.mean(price_history[-self.short_window :])
+            std = np.std(price_history[-self.std_window :])
+
             self.logger.print_numeric("long_mean", long_mean)
             self.logger.print_numeric("short_mean", short_mean)
             self.logger.print_numeric("std", std)
@@ -569,7 +625,25 @@ class Squid(Product):
             short_below_long = short_mean < long_mean
 
             # Check if we should close existing positions based on z_close_threshold
-            if abs(z_score) < self.z_close_threshold and self.position != 0:
+            # Only close positions if we're not in recovery mode OR
+            # if the position is opposite to the type of position we're protecting
+            should_close_position = (
+                abs(z_score) < self.z_close_threshold
+                and self.position != 0
+                and not (
+                    self.in_recovery_mode
+                    and (
+                        (
+                            self.recovery_position_type == "long" and self.position > 0
+                        )  # Protecting long positions
+                        or (
+                            self.recovery_position_type == "short" and self.position < 0
+                        )  # Protecting short positions
+                    )
+                )
+            )
+
+            if should_close_position:
                 # Close position logic
                 if self.position > 0:
                     # We have a long position to close
@@ -582,6 +656,14 @@ class Squid(Product):
                     bid_volume = min(abs(self.position), best_bid_volume)
                     self.place_order(best_bid_price, bid_volume)
                 return  # Exit after closing position
+
+            # If we're in recovery mode for a specific position type,
+            # don't initiate new positions of the same type
+            if self.in_recovery_mode:
+                if (self.recovery_position_type == "long" and short_below_long) or (
+                    self.recovery_position_type == "short" and not short_below_long
+                ):
+                    return
 
             if short_below_long:
                 # Long signal
@@ -770,6 +852,15 @@ class PicnicBasket1(Product):
         bid_price = round(bid_price)
         ask_price = round(ask_price)
 
+        ob_best_bid, _ = self.order_book.get_best_bid()
+        ob_best_ask, _ = self.order_book.get_best_ask()
+
+        if bid_price >= ob_best_ask:
+            bid_price = ob_best_ask - 1
+
+        if ask_price <= ob_best_bid:
+            ask_price = ob_best_bid + 1
+
         bid_volume = min(self.mm_default_vol, self.remaining_buy)
         ask_volume = min(self.mm_default_vol, self.remaining_sell)
 
@@ -881,6 +972,15 @@ class PicnicBasket2(Product):
         bid_price = round(bid_price)
         ask_price = round(ask_price)
 
+        ob_best_bid, _ = self.order_book.get_best_bid()
+        ob_best_ask, _ = self.order_book.get_best_ask()
+
+        if bid_price >= ob_best_ask:
+            bid_price = ob_best_ask - 1
+
+        if ask_price <= ob_best_bid:
+            ask_price = ob_best_bid + 1
+
         bid_volume = min(self.mm_default_vol, self.remaining_buy)
         ask_volume = min(self.mm_default_vol, self.remaining_sell)
 
@@ -950,10 +1050,10 @@ class SyntheticBasket1(SyntheticProduct):
 
         # Price tracking
         self.N = config.get("N")
-        self.BUY_SPREAD_MEAN = 60.08
-        self.BUY_SPREAD_VAR = 7246.50
-        self.SELL_SPREAD_MEAN = 37.44
-        self.SELL_SPREAD_VAR = 7250.25
+        self.BUY_SPREAD_MEAN = 72.04
+        self.BUY_SPREAD_VAR = 7434.64
+        self.SELL_SPREAD_MEAN = 49.45
+        self.SELL_SPREAD_VAR = 7439.19
 
         self.buy_spread_stats = WelfordStatsWithPriors(
             self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
@@ -967,7 +1067,7 @@ class SyntheticBasket1(SyntheticProduct):
         self.baskets_long = 0
         self.baskets_short = 0
 
-        self.converge_window = 50
+        self.converge_window = 25
         self.iter = 0
 
     def calculate_orders(self, products, timestamp):
@@ -1064,13 +1164,17 @@ class SyntheticBasket1(SyntheticProduct):
         # The limiting factor is the minimum of both constraints
         max_baskets_sell = min(min(basket_sell_limits), min(liquidity_sell_limits))
 
+        # buy_std = self.BUY_SPREAD_VAR**0.5
         buy_std = self.buy_spread_stats.get_std()
         buy_mean = self.BUY_SPREAD_MEAN
+        # buy_mean = self.buy_spread_stats.get_mean()
         z_score_buy = (buy_spread - buy_mean) / buy_std
         self.logger.print_numeric("z_score_buy", z_score_buy)
 
         sell_std = self.sell_spread_stats.get_std()
-        sell_mean = self.SELL_SPREAD_MEAN
+        # sell_std = self.SELL_SPREAD_VAR**0.5  # self.sell_spread_stats.get_std()
+        # sell_mean = self.sell_spread_stats.get_mean()
+        sell_mean = self.SELL_SPREAD_MEAN  # self.sell_spread_stats.get_mean()
         z_score_sell = (sell_spread - sell_mean) / sell_std
         self.logger.print_numeric("z_score_sell", z_score_sell)
 
@@ -1199,10 +1303,10 @@ class SyntheticBasket2(SyntheticProduct):
 
         # Price tracking
         self.converge_window = 25
-        self.BUY_SPREAD_MEAN = 39.32
-        self.BUY_SPREAD_VAR = 3667.70
-        self.SELL_SPREAD_MEAN = 26.01
-        self.SELL_SPREAD_VAR = 3668.32
+        self.BUY_SPREAD_MEAN = 38.09
+        self.BUY_SPREAD_VAR = 3426.40
+        self.SELL_SPREAD_MEAN = 24.81
+        self.SELL_SPREAD_VAR = 3426.43
 
         self.buy_spread_stats = WelfordStatsWithPriors(
             self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
@@ -1212,11 +1316,11 @@ class SyntheticBasket2(SyntheticProduct):
         )
 
         # Theoretical max is 62
-        self.max_basket_position = 50
+        self.max_basket_position = 62
         self.baskets_long = 0
         self.baskets_short = 0
 
-        self.converge_window = 50
+        self.converge_window = 25
         self.iter = 0
 
     def calculate_orders(self, products, timestamp):
@@ -1297,13 +1401,17 @@ class SyntheticBasket2(SyntheticProduct):
         # The limiting factor is the minimum of both constraints
         max_baskets_sell = min(min(basket_sell_limits), min(liquidity_sell_limits))
 
+        # buy_std = self.BUY_SPREAD_VAR**0.5
         buy_std = self.buy_spread_stats.get_std()
         buy_mean = self.BUY_SPREAD_MEAN
+        # buy_mean = self.buy_spread_stats.get_mean()
         z_score_buy = (buy_spread - buy_mean) / buy_std
         self.logger.print_numeric("z_score_buy", z_score_buy)
 
         sell_std = self.sell_spread_stats.get_std()
-        sell_mean = self.SELL_SPREAD_MEAN
+        # sell_std = self.SELL_SPREAD_VAR**0.5  # self.sell_spread_stats.get_std()
+        # sell_mean = self.sell_spread_stats.get_mean()
+        sell_mean = self.SELL_SPREAD_MEAN  # self.sell_spread_stats.get_mean()
         z_score_sell = (sell_spread - sell_mean) / sell_std
         self.logger.print_numeric("z_score_sell", z_score_sell)
 
@@ -1394,3 +1502,332 @@ class SyntheticBasket2(SyntheticProduct):
                 self.logger.print_numeric("sell_spread_close", sell_spread)
 
         self.on_timestep_end()
+
+
+class VolcanicRock(Product):
+    def __init__(self, config):
+        super().__init__()
+
+        # Squid parameters
+        self.name = "Volcanic Rock"
+        self.symbol = "VOLCANIC_ROCK"
+        self.pos_limit = 400
+
+        # Price estimation
+        self.short_window = config.get("short_window")
+        self.long_window = config.get("long_window")
+        self.std_window = config.get("std_window")
+
+        self.window_size = max(self.short_window, self.long_window, self.std_window)
+        self.history = deque(maxlen=self.window_size)
+
+        # Directional trading
+        self.dt_default_vol = config.get("dt_default_vol")
+        self.dt_signal_strength = config.get("dt_signal_strength")
+        self.dt_threshold_z = config.get("dt_threshold_z")
+        self.z_close_threshold = config.get("z_close_threshold")
+
+        # Price drop protection
+        self.price_drop_threshold = config.get(
+            "price_drop_threshold", 3.0
+        )  # Z-score threshold for drop detection
+        self.recovery_wait_period = config.get(
+            "recovery_wait_period", 10
+        )  # Number of iterations to wait
+        self.recovery_counter = 0  # Count iterations after drop detected
+        self.in_recovery_mode = False  # Flag to indicate we're in recovery mode
+        self.recovery_position_type = (
+            None  # Will be "long" or "short" depending on position during drop
+        )
+        self.recent_price_changes = deque(maxlen=5)  # Track recent price changes
+        self.prev_price = None  # Store previous price for change calculation
+
+        self.no_orders = False
+
+    def update_product(self, order_depths, position, own_trades, timestamp):
+        super().update_product(order_depths, position, own_trades, timestamp)
+
+        if self.order_book.check_if_no_orders():
+            self.no_orders = True
+            return
+        else:
+            self.no_orders = False
+
+        # --------------Price estimation------------------
+        vwap = self.order_book.vwap
+        self.logger.print_numeric("vwap", vwap)
+        mid_price = self.order_book.mid_price
+        self.logger.print_numeric("mid_price", mid_price)
+
+        # Calculate price change if we have history
+        if hasattr(self, "prev_price") and self.prev_price is not None:
+            price_change = mid_price - self.prev_price
+            self.recent_price_changes.append(price_change)
+
+            # Detect sudden price movements if not already in recovery mode
+            if not self.in_recovery_mode and len(self.recent_price_changes) >= 3:
+                # Calculate standard deviation of recent changes
+                std_changes = np.std(list(self.recent_price_changes))
+                if std_changes > 0:
+                    # Calculate z-score of current price change
+                    current_change_z = price_change / std_changes
+
+                    # If large negative z-score while holding long positions
+                    # Or large positive z-score while holding short positions
+                    if (
+                        current_change_z < -self.price_drop_threshold
+                        and self.position > 0
+                    ) or (
+                        current_change_z > self.price_drop_threshold
+                        and self.position < 0
+                    ):
+                        self.in_recovery_mode = True
+                        self.recovery_counter = 0
+                        self.recovery_position_type = (
+                            "long" if self.position > 0 else "short"
+                        )
+        # Update recovery counter if in recovery mode
+        if self.in_recovery_mode:
+            self.recovery_counter += 1
+
+            # Check if recovery period is over
+            if self.recovery_counter >= self.recovery_wait_period:
+                self.in_recovery_mode = False
+                self.recovery_position_type = None
+                self.recovery_counter = 0
+
+        # Store current price for next update
+        self.prev_price = mid_price
+
+        self.fair_value = vwap
+        self.logger.print_numeric("fair_value", self.fair_value)
+
+        # Update history with the latest price
+        self.history.append(self.fair_value)
+
+    def directional_trade(self):
+        # Check if we have enough data points for all three moving averages
+        if len(self.history) >= self.long_window:
+            price_history = list(self.history)
+
+            long_mean = np.mean(price_history[-self.long_window :])
+            short_mean = np.mean(price_history[-self.short_window :])
+            std = np.std(price_history[-self.std_window :])
+
+            self.logger.print_numeric("long_mean", long_mean)
+            self.logger.print_numeric("short_mean", short_mean)
+            self.logger.print_numeric("std", std)
+
+            z_score = abs(short_mean - long_mean) / std
+            self.logger.print_numeric("z_score", z_score)
+
+            short_below_long = short_mean < long_mean
+
+            # Check if we should close existing positions based on z_close_threshold
+            # Only close positions if we're not in recovery mode OR
+            # if the position is opposite to the type of position we're protecting
+            should_close_position = (
+                abs(z_score) < self.z_close_threshold
+                and self.position != 0
+                and not (
+                    self.in_recovery_mode
+                    and (
+                        (
+                            self.recovery_position_type == "long" and self.position > 0
+                        )  # Protecting long positions
+                        or (
+                            self.recovery_position_type == "short" and self.position < 0
+                        )  # Protecting short positions
+                    )
+                )
+            )
+
+            if should_close_position:
+                # Close position logic
+                if self.position > 0:
+                    # We have a long position to close
+                    best_ask_price, best_ask_volume = self.order_book.get_best_bid()
+                    ask_volume = min(abs(self.position), best_ask_volume)
+                    self.place_order(best_ask_price, -ask_volume)
+                elif self.position < 0:
+                    # We have a short position to close
+                    best_bid_price, best_bid_volume = self.order_book.get_best_ask()
+                    bid_volume = min(abs(self.position), best_bid_volume)
+                    self.place_order(best_bid_price, bid_volume)
+                return  # Exit after closing position
+
+            # If we're in recovery mode for a specific position type,
+            # don't initiate new positions of the same type
+            if self.in_recovery_mode:
+                if (self.recovery_position_type == "long" and short_below_long) or (
+                    self.recovery_position_type == "short" and not short_below_long
+                ):
+                    return
+
+            if short_below_long:
+                # Long signal
+                if self.position >= 0:
+                    z_score_threshold = self.dt_threshold_z
+                    bid_volume = min(
+                        self.dt_default_vol,
+                        self.remaining_buy,
+                    )
+                else:
+                    z_score_threshold = 0
+                    bid_volume = min(self.remaining_buy, abs(self.position))
+
+                if z_score > z_score_threshold and self.remaining_buy > 0:
+                    best_bid_price, best_bid_volume = self.order_book.get_best_ask()
+                    bid_price = best_bid_price
+                    bid_volume = min(bid_volume, best_bid_volume)
+                    self.place_order(bid_price, bid_volume)
+
+            elif not short_below_long:
+                # Short signal
+                if self.position <= 0:
+                    z_score_threshold = self.dt_threshold_z
+                    ask_volume = min(
+                        self.dt_default_vol,
+                        self.remaining_sell,
+                    )
+                else:
+                    z_score_threshold = 0
+                    ask_volume = min(self.remaining_sell, self.position)
+
+                if self.remaining_sell > 0 and z_score > z_score_threshold:
+                    best_ask_price, best_ask_volume = self.order_book.get_best_bid()
+                    ask_price = best_ask_price
+                    ask_volume = min(ask_volume, best_ask_volume)
+                    self.place_order(ask_price, -ask_volume)
+
+    def calculate_orders(self):
+        # Directional trading
+        if not self.no_orders:
+            self.directional_trade()
+
+
+class Volcanic9500(VolcanicRock):
+    def __init__(self, config):
+        super().__init__(config)
+        self.name = "Volcanic 9500"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_9500"
+        self.pos_limit = 200
+
+
+class Volcanic9750(VolcanicRock):
+    def __init__(self, config):
+        super().__init__(config)
+        self.name = "Volcanic 9750"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_9750"
+        self.pos_limit = 200
+
+
+class Volcanic10000(VolcanicRock):
+    def __init__(self, config):
+        super().__init__(config)
+        self.name = "Volcanic 10000"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_10000"
+        self.pos_limit = 200
+
+
+class Volcanic10250(Product):
+    def __init__(self, config):
+        super().__init__()
+        self.name = "Volcanic 10250"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_10250"
+        self.pos_limit = 200
+
+        self.total_bought = 0  # Total volume bought
+        self.total_cost = 0  # Total cost of all purchases
+        self.avg_price = 0  # Weighted average price
+
+        self.saturated = False
+
+    def calculate_orders(self):
+        if self.remaining_buy > 0 and not self.saturated:
+            if self.order_book.check_if_no_orders():
+                return
+            best_ask_price, best_ask_volume = self.order_book.get_best_ask()
+            bid_price = best_ask_price
+            bid_volume = min(best_ask_volume, self.remaining_buy)
+            self.place_order(bid_price, bid_volume)
+
+            # Update the total volume and cost
+            self.total_cost += bid_price * bid_volume
+            self.total_bought += bid_volume
+
+            # Calculate the new weighted average price
+            if self.total_bought > 0:
+                self.avg_price = self.total_cost / self.total_bought
+
+        else:
+            self.saturated = True
+
+        if self.saturated and self.remaining_sell > 0:
+            if self.order_book.check_if_no_orders():
+                return
+            # Check if the average price is above the max profit factor
+            best_bid_price, best_bid_volume = self.order_book.get_best_bid()
+
+            if self.timestamp < 500000:
+                max_profit_factor = 3
+            else:
+                max_profit_factor = 1.5
+
+            if self.avg_price * max_profit_factor < best_bid_price:
+                ask_volume = min(
+                    best_bid_volume, self.remaining_sell, abs(self.position)
+                )
+                self.place_order(best_bid_price, -ask_volume)
+
+
+class Volcanic10500(Product):
+    def __init__(self, config):
+        super().__init__()
+        self.name = "Volcanic 10500"
+        self.symbol = "VOLCANIC_ROCK_VOUCHER_10500"
+        self.pos_limit = 200
+
+        self.total_bought = 0  # Total volume bought
+        self.total_cost = 0  # Total cost of all purchases
+        self.avg_price = 0  # Weighted average price
+
+        self.saturated = False
+
+    def calculate_orders(self):
+        if self.remaining_buy > 0 and not self.saturated:
+            if self.order_book.check_if_no_orders():
+                return
+            best_ask_price, best_ask_volume = self.order_book.get_best_ask()
+            bid_price = best_ask_price
+            bid_volume = min(best_ask_volume, self.remaining_buy)
+            self.place_order(bid_price, bid_volume)
+
+            # Update the total volume and cost
+            self.total_cost += bid_price * bid_volume
+            self.total_bought += bid_volume
+
+            # Calculate the new weighted average price
+            if self.total_bought > 0:
+                self.avg_price = self.total_cost / self.total_bought
+
+        else:
+            self.saturated = True
+
+        if self.saturated and self.remaining_sell > 0:
+            # Check if the average price is above the max profit factor
+            if self.order_book.check_if_no_orders():
+                return
+
+            best_bid_price, best_bid_volume = self.order_book.get_best_bid()
+
+            if self.timestamp < 500000:
+                max_profit_factor = 10
+            else:
+                max_profit_factor = 5
+
+            if self.avg_price * max_profit_factor < best_bid_price:
+                ask_volume = min(
+                    best_bid_volume, self.remaining_sell, abs(self.position)
+                )
+                self.place_order(best_bid_price, -ask_volume)
