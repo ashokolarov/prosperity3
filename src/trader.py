@@ -105,18 +105,18 @@ config_picnic_basket_2 = {
 
 config_synthetic_basket_1 = {
     "N": 10,
-    "buy_entry": 1.6,
-    "buy_exit": 0.25,
-    "sell_entry": 1.6,
-    "sell_exit": 0.25,
+    "buy_entry": 1.3,
+    "buy_exit": -0.4,
+    "sell_entry": 1.7,
+    "sell_exit": 0.1,
 }
 
 config_synthetic_basket_2 = {
-    "N": 100,
-    "buy_entry": 1.6,
-    "buy_exit": 0.2,
-    "sell_entry": 1.6,
-    "sell_exit": 0.2,
+    "N": 110,
+    "buy_entry": 1.1,
+    "buy_exit": -0.2,
+    "sell_entry": 1.3,
+    "sell_exit": -0.2,
 }
 
 config_volcanic = {
@@ -240,7 +240,7 @@ class Trader:
             products["VOLCANIC_ROCK_VOUCHER_10500"] = Volcanic10500(
                 config_volcanic_10500
             )
-            # ------------------Synthetic Products-------------------
+            # # ------------------Synthetic Products-------------------
             synthetic = {}
             synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
             synthetic["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
