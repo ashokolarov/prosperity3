@@ -9,12 +9,12 @@ Each round introduced new synthetic products, each with its own behavior and mar
 
 In addition to algorithmic trading, each round featured a small-scale manual trading challenge, typically focused on game theory, optimization under uncertainty, or decision-making based on limited information. While these contributed less to overall PnL, they added a fun and intellectually engaging element to the competition.
 
-For full details on the product mechanics, simulation environment, and round structure, see the Prosperity 3 Wiki. see the [Prosperity 3 Wiki](https://imc-prosperity.notion.site/Prosperity-3-Wiki-19ee8453a09380529731c4e6fb697ea4)
+For full details on the product mechanics, simulation environment, and round structure, see the [Prosperity 3 Wiki](https://imc-prosperity.notion.site/Prosperity-3-Wiki-19ee8453a09380529731c4e6fb697ea4)
 
 ## Organization
 We include all of work including a trading dashboard developed for visualizing positions, PnL, and market activity; a comprehensive set of research notebooks and analysis tools in the development folder that document our strategy development, data exploration, and backtesting results; and the core trading algorithms in the src directory, which implement our trading and risk management logic across multiple products.
 
-Instead of relying heavily on open-source tools, which many successful teams did, we chose to build our own infrastructure from scratch. This allowed us to tailor everything to our specific workflow and needs, but helped us learn a lot in the process. One of the core components we developed was a custom visualization dashboard, which helped us analyze price movements, order book dynamics, and bot behavior more effectively throughout the competition.
+Instead of relying heavily on open-source tools, which many successful teams did, we chose to build our own infrastructure from scratch. This allowed us to tailor everything to our specific workflow and needs and helped us learn a lot in the process. One of the core components we developed was a custom visualization dashboard, which helped us analyze price movements, order book dynamics, and bot behavior more effectively throughout the competition.
 
 ### Dashboard
 
