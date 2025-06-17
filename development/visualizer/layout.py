@@ -24,7 +24,7 @@ def get_layout(products, timestamps, log_name):
                     ),
                     # Title on the left with flex to take up more space
                     html.H1(
-                        f"Restarted Quants Dashboard - {log_name}",
+                        f"Prosperity 3 Dashboard - {log_name}",
                         style={"textAlign": "center", "margin": "0", "flex": "1"},
                     ),
                     html.Div(
