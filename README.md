@@ -21,3 +21,9 @@ Instead of relying heavily on open-source tools, which many successful teams did
 The dashboard was one of the first things we built, which allowed us to visualize and analyze the performance of our trading algorithms. It provides dynamic charts and tables for tracking positions, profit and loss (PnL), and order book data across all traded products. Users can select specific products, navigate through different timestamps, and view detailed metrics such as executed trades, order flow, and position limits. It was mainly used to quickly identify trends, monitor risk, and evaluate the effectiveness of your trading strategies during backtesting sessions.
 
 ![Dashboard](figures/dashboard.png)
+
+## Algorithmic Trading
+### Round 1 
+In round 1, we had access to three products to trade: Rainforest Resin, Kelp and Squid Ink.
+
+#### Rainforest Resin
