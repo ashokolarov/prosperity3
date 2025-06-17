@@ -17,7 +17,7 @@ def get_layout(products, timestamps, log_name):
                                 style={
                                     "marginTop": "5px",
                                     "marginLeft": "30px",
-                                    "width": "250px",
+                                    "width": "350px",
                                 },
                             ),
                         ],

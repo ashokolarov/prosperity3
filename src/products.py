@@ -73,7 +73,7 @@ class Product(ABC):
         self.print_product_end()
         return self.orders
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
         self.print_product_begin(timestamp)
         self.logger.print_numeric("position", position)
 
@@ -238,9 +238,9 @@ class RainforestResin(Product):
                 bid_price = best_bid_below_fair + 1  # penny
 
         if self.mm_manage_position:
-            if self.position > 0:
+            if self.position > 40:
                 ask_price -= 1
-            elif self.position < 0:
+            elif self.position < 40:
                 bid_price += 1
 
         if self.mm_constrain_below_fair:
@@ -304,9 +304,9 @@ class Kelp(Product):
         self.mm_constrain_below_fair = config.get("mm_constrain_below_fair")
         self.mm_manage_position = config.get("mm_manage_position")
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
         # Update order book, reset orders and recalculate positions
-        super().update_product(order_depths, position, own_trades, timestamp)
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
 
         # --------------Price estimation------------------
         mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
@@ -401,9 +401,9 @@ class Kelp(Product):
                 bid_price = best_bid_below_fair + 1
 
         if self.mm_manage_position:
-            if self.position > 0:
+            if self.position > 40:
                 ask_price -= 1
-            elif self.position < 0:
+            elif self.position < 40:
                 bid_price += 1
 
         if self.mm_constrain_below_fair:
@@ -544,8 +544,8 @@ class Squid(Product):
         self.recent_price_changes = deque(maxlen=5)  # Track recent price changes
         self.prev_price = None  # Store previous price for change calculation
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        super().update_product(order_depths, position, own_trades, timestamp)
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
 
         # --------------Price estimation------------------
         mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
@@ -716,8 +716,8 @@ class Croissants(Product):
         self.symbol = "CROISSANTS"
         self.pos_limit = 250
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        super().update_product(order_depths, position, own_trades, timestamp)
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
 
     def calculate_orders(self):
         pass
@@ -733,8 +733,8 @@ class Jams(Product):
         self.symbol = "JAMS"
         self.pos_limit = 350
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        super().update_product(order_depths, position, own_trades, timestamp)
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
 
     def calculate_orders(self):
         pass
@@ -750,8 +750,8 @@ class Djembes(Product):
         self.symbol = "DJEMBES"
         self.pos_limit = 60
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        super().update_product(order_depths, position, own_trades, timestamp)
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
 
     def calculate_orders(self):
         pass
@@ -780,8 +780,8 @@ class PicnicBasket1(Product):
         self.mm_constrain_below_fair = config.get("mm_constrain_below_fair")
         self.mm_manage_position = config.get("mm_manage_position")
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        super().update_product(order_depths, position, own_trades, timestamp)
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
 
         # --------------Price estimation------------------
         mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
@@ -900,8 +900,8 @@ class PicnicBasket2(Product):
         self.mm_constrain_below_fair = config.get("mm_constrain_below_fair")
         self.mm_manage_position = config.get("mm_manage_position")
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        super().update_product(order_depths, position, own_trades, timestamp)
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
 
         # --------------Price estimation------------------
         mm_price = self.order_book.get_mm_fair(self.detect_mm_volume)
@@ -1050,10 +1050,10 @@ class SyntheticBasket1(SyntheticProduct):
 
         # Price tracking
         self.N = config.get("N")
-        self.BUY_SPREAD_MEAN = 72.04
-        self.BUY_SPREAD_VAR = 7434.64
-        self.SELL_SPREAD_MEAN = 49.45
-        self.SELL_SPREAD_VAR = 7439.19
+        self.BUY_SPREAD_MEAN = 16.54
+        self.BUY_SPREAD_VAR = 12766.11
+        self.SELL_SPREAD_MEAN = -6.032
+        self.SELL_SPREAD_VAR = 12766.588
 
         self.buy_spread_stats = WelfordStatsWithPriors(
             self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
@@ -1303,10 +1303,10 @@ class SyntheticBasket2(SyntheticProduct):
 
         # Price tracking
         self.converge_window = 25
-        self.BUY_SPREAD_MEAN = 38.09
-        self.BUY_SPREAD_VAR = 3426.40
-        self.SELL_SPREAD_MEAN = 24.81
-        self.SELL_SPREAD_VAR = 3426.43
+        self.BUY_SPREAD_MEAN = 59.77
+        self.BUY_SPREAD_VAR = 4364.21
+        self.SELL_SPREAD_MEAN = 46.49
+        self.SELL_SPREAD_VAR = 4363.81
 
         self.buy_spread_stats = WelfordStatsWithPriors(
             self.BUY_SPREAD_MEAN, self.BUY_SPREAD_VAR, self.N
@@ -1528,12 +1528,8 @@ class VolcanicRock(Product):
         self.z_close_threshold = config.get("z_close_threshold")
 
         # Price drop protection
-        self.price_drop_threshold = config.get(
-            "price_drop_threshold", 3.0
-        )  # Z-score threshold for drop detection
-        self.recovery_wait_period = config.get(
-            "recovery_wait_period", 10
-        )  # Number of iterations to wait
+        self.price_drop_threshold = config.get("price_drop_threshold")
+        self.recovery_wait_period = config.get("recovery_wait_period")
         self.recovery_counter = 0  # Count iterations after drop detected
         self.in_recovery_mode = False  # Flag to indicate we're in recovery mode
         self.recovery_position_type = (
@@ -1544,8 +1540,8 @@ class VolcanicRock(Product):
 
         self.no_orders = False
 
-    def update_product(self, order_depths, position, own_trades, timestamp):
-        super().update_product(order_depths, position, own_trades, timestamp)
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
 
         if self.order_book.check_if_no_orders():
             self.no_orders = True
@@ -1770,9 +1766,9 @@ class Volcanic10250(Product):
             best_bid_price, best_bid_volume = self.order_book.get_best_bid()
 
             if self.timestamp < 500000:
-                max_profit_factor = 3
+                max_profit_factor = 5
             else:
-                max_profit_factor = 1.5
+                max_profit_factor = 2.5
 
             if self.avg_price * max_profit_factor < best_bid_price:
                 ask_volume = min(
@@ -1831,3 +1827,35 @@ class Volcanic10500(Product):
                     best_bid_volume, self.remaining_sell, abs(self.position)
                 )
                 self.place_order(best_bid_price, -ask_volume)
+
+
+class MagnificentMacarons(Product):
+    def __init__(self, config):
+        super().__init__()
+        self.name = "Magnificent Macarons"
+        self.symbol = "MAGNIFICENT_MACARONS"
+        self.pos_limit = 75
+
+        self.obs = None
+
+    def update_product(self, order_depths, position, own_trades, timestamp, obs):
+        super().update_product(order_depths, position, own_trades, timestamp, obs)
+
+        self.obs = obs
+        self.conversions = 0
+
+    def calculate_orders(self):
+        self.conversions -= self.position
+
+        if self.obs is None:
+            return
+
+        buy_price = (
+            self.obs.askPrice + self.obs.transportFees + self.obs.importTariff + 1
+        )
+        bid_price = self.obs.bidPrice - 0.5
+
+        sell_price = max(round(buy_price), round(bid_price))
+
+        vol = self.pos_limit
+        self.place_order(sell_price, -vol)

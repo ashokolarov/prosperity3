@@ -561,9 +561,9 @@ class RainforestResin(Product):
                 bid_price = best_bid_below_fair + 1  # penny
 
         if self.mm_manage_position:
-            if self.position > 0:
+            if self.position > 40:
                 ask_price -= 1
-            elif self.position < 0:
+            elif self.position < 40:
                 bid_price += 1
 
         if self.mm_constrain_below_fair:
@@ -724,9 +724,9 @@ class Kelp(Product):
                 bid_price = best_bid_below_fair + 1
 
         if self.mm_manage_position:
-            if self.position > 0:
+            if self.position > 40:
                 ask_price -= 1
-            elif self.position < 0:
+            elif self.position < 40:
                 bid_price += 1
 
         if self.mm_constrain_below_fair:
@@ -1851,12 +1851,8 @@ class VolcanicRock(Product):
         self.z_close_threshold = config.get("z_close_threshold")
 
         # Price drop protection
-        self.price_drop_threshold = config.get(
-            "price_drop_threshold", 3.0
-        )  # Z-score threshold for drop detection
-        self.recovery_wait_period = config.get(
-            "recovery_wait_period", 10
-        )  # Number of iterations to wait
+        self.price_drop_threshold = config.get("price_drop_threshold")
+        self.recovery_wait_period = config.get("recovery_wait_period")
         self.recovery_counter = 0  # Count iterations after drop detected
         self.in_recovery_mode = False  # Flag to indicate we're in recovery mode
         self.recovery_position_type = (
@@ -2159,7 +2155,7 @@ class Volcanic10500(Product):
 config_rainforest = {
     # Market taking parameters
     "mt_take_edge": 1,
-    "mt_profit_margin": 1,
+    "mt_profit_margin": 0,
     # Market making parameters
     "mm_default_vol": 15,
     "mm_default_edge": 4,
@@ -2177,7 +2173,7 @@ config_kelp = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market taking parameters
     "mt_take_edge": 1,
-    "mt_profit_margin": 0.5,
+    "mt_profit_margin": 0,
     "mt_adverse_volume": 15,  # Maximum mt volume
     # Market making parameters
     "mm_default_vol": 20,
@@ -2186,7 +2182,7 @@ config_kelp = {
     "mm_join_edge": 2,
     "mm_join_volume": 3,
     "mm_constrain_below_fair": True,
-    "mm_manage_position": True,
+    "mm_manage_position": False,
 }
 
 config_squid = {
@@ -2373,7 +2369,7 @@ class Trader:
             products["VOLCANIC_ROCK_VOUCHER_10500"] = Volcanic10500(
                 config_volcanic_10500
             )
-            # # ------------------Synthetic Products-------------------
+            # ------------------Synthetic Products-------------------
             synthetic = {}
             synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
             synthetic["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)

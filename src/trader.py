@@ -9,6 +9,7 @@ from products import (
     Djembes,
     Jams,
     Kelp,
+    MagnificentMacarons,
     PicnicBasket1,
     PicnicBasket2,
     RainforestResin,
@@ -26,7 +27,7 @@ from products import (
 config_rainforest = {
     # Market taking parameters
     "mt_take_edge": 1,
-    "mt_profit_margin": 1,
+    "mt_profit_margin": 0,
     # Market making parameters
     "mm_default_vol": 15,
     "mm_default_edge": 4,
@@ -44,7 +45,7 @@ config_kelp = {
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Market taking parameters
     "mt_take_edge": 1,
-    "mt_profit_margin": 0.5,
+    "mt_profit_margin": 0.0,
     "mt_adverse_volume": 15,  # Maximum mt volume
     # Market making parameters
     "mm_default_vol": 20,
@@ -60,7 +61,7 @@ config_squid = {
     # General
     "detect_mm_volume": 15,  # Volume to detect market maker
     # Price estimation
-    "short_window": 70,
+    "short_window": 100,
     "long_window": 510,
     "std_window": 290,
     # Directional parameters
@@ -105,18 +106,18 @@ config_picnic_basket_2 = {
 
 config_synthetic_basket_1 = {
     "N": 10,
-    "buy_entry": 1.3,
-    "buy_exit": -0.4,
-    "sell_entry": 1.7,
-    "sell_exit": 0.1,
+    "buy_entry": 1.0,
+    "buy_exit": -0.7,
+    "sell_entry": 1.0,
+    "sell_exit": -0.7,
 }
 
 config_synthetic_basket_2 = {
     "N": 110,
-    "buy_entry": 1.1,
-    "buy_exit": -0.2,
-    "sell_entry": 1.3,
-    "sell_exit": -0.2,
+    "buy_entry": 1.5,
+    "buy_exit": -0.3,
+    "sell_entry": 1.5,
+    "sell_exit": -0.3,
 }
 
 config_volcanic = {
@@ -197,6 +198,12 @@ config_volcanic_10500 = {
     "recovery_wait_period": 5,
 }
 
+config_macarons = {
+    "window": 50,
+    "z_open": 3.5,
+    "z_close": 2.0,
+}
+
 
 class Trader:
     def run(self, state: TradingState):
@@ -217,33 +224,35 @@ class Trader:
         ]
 
         result = {}
+        conversions = 0
         if not state.traderData:
             # -------------------Initialize Products-------------------
             products = {}
-            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
-            products["KELP"] = Kelp(config_kelp)
-            products["SQUID_INK"] = Squid(config_squid)
-            products["CROISSANTS"] = Croissants(config_croissants)
-            products["JAMS"] = Jams(config_jams)
-            products["DJEMBES"] = Djembes(config_djembes)
-            products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
-            products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
-            products["VOLCANIC_ROCK"] = VolcanicRock(config_volcanic)
-            products["VOLCANIC_ROCK_VOUCHER_9500"] = Volcanic9500(config_volcanic_9500)
-            products["VOLCANIC_ROCK_VOUCHER_9750"] = Volcanic9750(config_volcanic_9750)
-            products["VOLCANIC_ROCK_VOUCHER_10000"] = Volcanic10000(
-                config_volcanic_10000
-            )
-            products["VOLCANIC_ROCK_VOUCHER_10250"] = Volcanic10250(
-                config_volcanic_10250
-            )
-            products["VOLCANIC_ROCK_VOUCHER_10500"] = Volcanic10500(
-                config_volcanic_10500
-            )
-            # # ------------------Synthetic Products-------------------
+            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            # products["KELP"] = Kelp(config_kelp)
+            # products["SQUID_INK"] = Squid(config_squid)
+            # products["CROISSANTS"] = Croissants(config_croissants)
+            # products["JAMS"] = Jams(config_jams)
+            # products["DJEMBES"] = Djembes(config_djembes)
+            # products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
+            # products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
+            # products["VOLCANIC_ROCK"] = VolcanicRock(config_volcanic)
+            # products["VOLCANIC_ROCK_VOUCHER_9500"] = Volcanic9500(config_volcanic_9500)
+            # products["VOLCANIC_ROCK_VOUCHER_9750"] = Volcanic9750(config_volcanic_9750)
+            # products["VOLCANIC_ROCK_VOUCHER_10000"] = Volcanic10000(
+            #     config_volcanic_10000
+            # )
+            # products["VOLCANIC_ROCK_VOUCHER_10250"] = Volcanic10250(
+            #     config_volcanic_10250
+            # )
+            # products["VOLCANIC_ROCK_VOUCHER_10500"] = Volcanic10500(
+            #     config_volcanic_10500
+            # )
+            products["MAGNIFICENT_MACARONS"] = MagnificentMacarons(config_macarons)
+            # ------------------Synthetic Products-------------------
             synthetic = {}
-            synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
-            synthetic["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
+            # synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
+            # synthetic["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
@@ -262,8 +271,10 @@ class Trader:
                 else:
                     own_trades = []
 
+                obs = state.observations.conversionObservations.get(product, None)
+
                 products[product].update_product(
-                    order_depth, position, own_trades, timestamp
+                    order_depth, position, own_trades, timestamp, obs
                 )
 
                 if product not in PAIRS_PRODUCTS:
@@ -276,6 +287,9 @@ class Trader:
             if product in products.keys():
                 products[product].calculate_orders()
 
+                if product == "MAGNIFICENT_MACARONS":
+                    conversions += products[product].conversions
+
         for product in state.order_depths:
             if product in products.keys():
                 result[product] = products[product].on_timestep_end()
@@ -284,8 +298,6 @@ class Trader:
         traderData["products"] = products
         traderData["synthetic"] = synthetic
         traderData = jsonpickle.encode(traderData)
-
-        conversions = 1
 
         t2 = time()
 
