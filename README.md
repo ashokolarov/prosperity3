@@ -91,9 +91,9 @@ In this round things got more sophidticated since the problem was no longer dete
 We managed to get our hands on some information from a similar problem from last year´s competition (with slightly different characteristics - including 25 containers and 3 possible picks) where we had info on both the problem statement 
 (similar to this year´s) as well as the results which would give insights on people´s logic. This allowed us to reverse engineer a formula that maps the inherent value of a container (profit assuming nobody picks it except the preset inhabitants) to the expected percentage of total picks on that container. It basically encodes the tendency of people to pick the containers with larger inherent values or to pick the safer options. Using this fitted formula we got the expected percentages of picks across all containers which then gave us the expected profits. In order to have some sensitivity on this method, we came up with two formulas fitted on last year´s choices:
 
-- P(i) = (x_i^α) / (∑ x_j^α) × 100
+- $P(i)$ = $(x_i^α / \sum x_j^α) \times 100$
 
-- P(i) = (e^(x_i/β)) / (∑ e^(x_j/β)) × 100
+- $P(i)$ = $(e^{x_i/β} / \sum e^{x_j/β}) \times 100$
 
 Where:
 - `x_i` is the inherent value for container i
