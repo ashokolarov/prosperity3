@@ -64,6 +64,19 @@ Using this strategy, we netted a profit of about 5000 seashells.
 #### Round 1 Results
 Using these strategies, we found ourselves with a total profit of about 53000 seashells, placing us at #13 out of the +12000 teams competing. 
 
+### Round 2 
+
+#### Picnic Baskets 
+
+The Picnic Basket products represented ETF-style instruments that could be replicated by trading their underlying constituents. These baskets were designed to be arbitrageable, meaning their prices should theoretically equal the weighted sum of their component products. However, market inefficiencies and temporary mispricings created opportunities for profitable pairs trading strategies.
+
+Our approach for both Picnic Basket 1 and Picnic Basket 2 was to implement a pairs trading strategy that exploited these arbitrage opportunities. The strategy worked by continuously monitoring the spread between the basket price and the synthetic price of its constituents. When the spread deviated significantly from its historical mean, the algorithm would take offsetting positions: buying the undervalued side and selling the overvalued side, with the expectation that the spread would eventually revert to its mean.
+
+The key insight was that these spreads followed a mean-reverting pattern, but with different statistical properties for each basket. Rather than rely on rolling means and standard deviations, we used hardcoded spread means—based on the intrinsic relationship between the baskets and their components—combined with a short rolling window for the standard deviation. This hybrid approach allowed us to detect short-term volatility more responsively. The small window size caused z-scores to spike when volatility dropped, often right before the spread reverted to the mean. This allowed us to time entries more precisely, often near local extrema. When the z-score exceeded predefined entry thresholds (indicating a significant deviation), the algorithm would initiate a pairs trade. 
+
+Risk management was built into the strategy through careful position sizing and exit logic. The algorithm tracked both position limits and available market liquidity to ensure it could execute the full pairs trade. It also maintained separate entry and exit thresholds, allowing for asymmetric risk-reward profiles that could be tuned based on the specific characteristics of each basket. Additionally, a convergence window prevented trading during the initial periods when the statistical measures were still stabilizing.
+
+
 ## Manual Trading
 ### Round 1
 The first round was a simple deterministic problem where the point was to maximize profits given a certain number of trades between products with a predetermined currency exchange rate. You had to pick the right "path" of trades leveraging the best exchange rates across a matrix of rates. Here we simply calculated the profit of every possible "trade path" and chose the best.
