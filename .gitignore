@@ -172,3 +172,15 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Data and backtest directories
+data/
+backtests/
+data/*
+backtests/*
+
+# Specific data file types (optional)
+*.csv
+*.json
+*.pkl
+*.pickle

@@ -9,19 +9,12 @@ from products import (
     Djembes,
     Jams,
     Kelp,
-    MagnificentMacarons,
     PicnicBasket1,
     PicnicBasket2,
     RainforestResin,
     Squid,
     SyntheticBasket1,
     SyntheticBasket2,
-    Volcanic9500,
-    Volcanic9750,
-    Volcanic10000,
-    Volcanic10250,
-    Volcanic10500,
-    VolcanicRock,
 )
 
 config_rainforest = {
@@ -120,90 +113,6 @@ config_synthetic_basket_2 = {
     "sell_exit": -0.3,
 }
 
-config_volcanic = {
-    # Price estimation
-    "short_window": 100,
-    "long_window": 500,
-    "std_window": 140,
-    # Directional parameters
-    "dt_default_vol": 100,
-    "dt_threshold_z": 0.7,
-    "z_close_threshold": 0.1,
-    "price_drop_threshold": 2,
-    "recovery_wait_period": 5,
-}
-
-config_volcanic_9500 = {
-    # Price estimation
-    "short_window": 90,
-    "long_window": 510,
-    "std_window": 140,
-    # Directional parameters
-    "dt_default_vol": 100,
-    "dt_threshold_z": 0.7,
-    "z_close_threshold": 0.2,
-    "price_drop_threshold": 2.0,
-    "recovery_wait_period": 5,
-}
-
-config_volcanic_9750 = {
-    # Price estimation
-    "short_window": 90,
-    "long_window": 510,
-    "std_window": 140,
-    # Directional parameters
-    "dt_default_vol": 100,
-    "dt_threshold_z": 0.8,
-    "z_close_threshold": 0.2,
-    "price_drop_threshold": 2.0,
-    "recovery_wait_period": 5,
-}
-
-config_volcanic_10000 = {
-    # Price estimation
-    "short_window": 90,
-    "long_window": 510,
-    "std_window": 140,
-    # Directional parameters
-    "dt_default_vol": 100,
-    "dt_threshold_z": 0.8,
-    "z_close_threshold": 0.2,
-    "price_drop_threshold": 2.0,
-    "recovery_wait_period": 5,
-}
-
-config_volcanic_10250 = {
-    # Price estimation
-    "short_window": 90,
-    "long_window": 500,
-    "std_window": 140,
-    # Directional parameters
-    "dt_default_vol": 100,
-    "dt_threshold_z": 0.8,
-    "z_close_threshold": 0.2,
-    "price_drop_threshold": 2.0,
-    "recovery_wait_period": 5,
-}
-
-config_volcanic_10500 = {
-    # Price estimation
-    "short_window": 90,
-    "long_window": 500,
-    "std_window": 140,
-    # Directional parameters
-    "dt_default_vol": 100,
-    "dt_threshold_z": 0.8,
-    "z_close_threshold": 0.2,
-    "price_drop_threshold": 2.0,
-    "recovery_wait_period": 5,
-}
-
-config_macarons = {
-    "window": 50,
-    "z_open": 3.5,
-    "z_close": 2.0,
-}
-
 
 class Trader:
     def run(self, state: TradingState):
@@ -228,31 +137,19 @@ class Trader:
         if not state.traderData:
             # -------------------Initialize Products-------------------
             products = {}
-            # products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
-            # products["KELP"] = Kelp(config_kelp)
-            # products["SQUID_INK"] = Squid(config_squid)
-            # products["CROISSANTS"] = Croissants(config_croissants)
-            # products["JAMS"] = Jams(config_jams)
-            # products["DJEMBES"] = Djembes(config_djembes)
-            # products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
-            # products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
-            # products["VOLCANIC_ROCK"] = VolcanicRock(config_volcanic)
-            # products["VOLCANIC_ROCK_VOUCHER_9500"] = Volcanic9500(config_volcanic_9500)
-            # products["VOLCANIC_ROCK_VOUCHER_9750"] = Volcanic9750(config_volcanic_9750)
-            # products["VOLCANIC_ROCK_VOUCHER_10000"] = Volcanic10000(
-            #     config_volcanic_10000
-            # )
-            # products["VOLCANIC_ROCK_VOUCHER_10250"] = Volcanic10250(
-            #     config_volcanic_10250
-            # )
-            # products["VOLCANIC_ROCK_VOUCHER_10500"] = Volcanic10500(
-            #     config_volcanic_10500
-            # )
-            products["MAGNIFICENT_MACARONS"] = MagnificentMacarons(config_macarons)
+            products["RAINFOREST_RESIN"] = RainforestResin(config_rainforest)
+            products["KELP"] = Kelp(config_kelp)
+            products["SQUID_INK"] = Squid(config_squid)
+            products["CROISSANTS"] = Croissants(config_croissants)
+            products["JAMS"] = Jams(config_jams)
+            products["DJEMBES"] = Djembes(config_djembes)
+            products["PICNIC_BASKET1"] = PicnicBasket1(config_picnic_basket_1)
+            products["PICNIC_BASKET2"] = PicnicBasket2(config_picnic_basket_2)
+
             # ------------------Synthetic Products-------------------
             synthetic = {}
-            # synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
-            # synthetic["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
+            synthetic["SYNTHETIC_BASKET1"] = SyntheticBasket1(config_synthetic_basket_1)
+            synthetic["SYNTHETIC_BASKET2"] = SyntheticBasket2(config_synthetic_basket_2)
         else:
             traderData = jsonpickle.decode(state.traderData)
             products = traderData["products"]
@@ -286,9 +183,6 @@ class Trader:
         for product in PAIRS_PRODUCTS:
             if product in products.keys():
                 products[product].calculate_orders()
-
-                if product == "MAGNIFICENT_MACARONS":
-                    conversions += products[product].conversions
 
         for product in state.order_depths:
             if product in products.keys():
