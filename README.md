@@ -10,10 +10,11 @@
     - [Kelp](#kelp)
     - [Squid Ink](#squid-ink)
     - [Round 1 Results](#round-1-results)
+  - [Round 2](#round-2)
+    - [Picnic Baskets](#picnic-baskets) 
 - [Manual Trading](#manual-trading)
   - [Round 1](#manual-round-1)
   - [Round 2](#manual-round-2)
-  - [Round 3](#manual-round-3)
 
 ## Prosperity 3
 IMC Prosperity 3 was a global algorithmic trading competition that brought together over 12,000 teams from around the world. The competition ran over five rounds and fifteen days, simulating a dynamic multi-product marketplace where teams designed and submitted trading algorithms to maximize profit and loss (PnL).
@@ -77,10 +78,6 @@ Our approach for both Picnic Basket 1 and Picnic Basket 2 was to implement a pai
 The key insight was that these spreads followed a mean-reverting pattern, but with different statistical properties for each basket. Rather than rely on rolling means and standard deviations, we used hardcoded spread means—based on the intrinsic relationship between the baskets and their components—combined with a short rolling window for the standard deviation. This hybrid approach allowed us to detect short-term volatility more responsively. The small window size caused z-scores to spike when volatility dropped, often right before the spread reverted to the mean. This allowed us to time entries more precisely, often near local extrema. When the z-score exceeded predefined entry thresholds (indicating a significant deviation), the algorithm would initiate a pairs trade. 
 
 Risk management was built into the strategy through careful position sizing and exit logic. The algorithm tracked both position limits and available market liquidity to ensure it could execute the full pairs trade. It also maintained separate entry and exit thresholds, allowing for asymmetric risk-reward profiles that could be tuned based on the specific characteristics of each basket. Additionally, a convergence window prevented trading during the initial periods when the statistical measures were still stabilizing.
-
-
-
-
 
 ## Manual Trading
 ### Round 1
